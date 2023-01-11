@@ -32,12 +32,12 @@ class Render_Mesh():
         self.ref_mesh_aabb = mesh.aabb(self.render_ref_mesh.eval())
 
         self.glctx = dr.RasterizeGLContext()
-        self.out_dir = 'Result/' + out_dir
+        self.out_dir = 'Result_Nvdiff/' + out_dir
         os.makedirs(self.out_dir, exist_ok=True)
         # os.makedirs(os.path.join(self.out_dir, "mesh_Mesh"), exist_ok=True)
         os.makedirs(os.path.join(self.out_dir, "images_Mesh"), exist_ok=True)
 
-    def render(self, mvp, campos, lightpos, resolution, mesh_scale=2.0):
+    def render(self, mvp, campos, lightpos, resolution, iter_i, mesh_scale=2.0):
         # lightpos = util.cosine_sample(campos) * RADIUS #This is not used when we generate the images
         params = {'mvp': mvp, 'lightpos': lightpos, 'campos': campos, 'resolution': [resolution, resolution], 'time': 0}
         _opt_ref = mesh.center_by_reference(self.render_ref_mesh.eval(params), self.ref_mesh_aabb, mesh_scale)
@@ -47,7 +47,7 @@ class Render_Mesh():
                                            background=None)
         for i in range(color_ref.shape[0]):
             np_result_image = color_ref[i].detach().cpu().numpy()
-            util.save_image(self.out_dir + '/images/' + ('train_%06d.png' % i), np_result_image)
+            util.save_image(self.out_dir + '/images_Mesh/' + ('train_%06d.png' % iter_i), np_result_image)
 
         return color_ref
 
