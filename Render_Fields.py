@@ -33,10 +33,33 @@ def gen_rays_from_params(campos,resolution, resolution_level=1):
     """
     Interpolate pose between two cameras.
     """
+
+    #Have to rewrite this part
+
+    #map the ray_v back to the objects and then retry the algorithm
     H = resolution
     W = resolution
     l = resolution_level
     p = torch.randn((W//l,H//l,3))
+    rays_v = p / torch.linalg.norm(p, ord=2, dim=-1, keepdim=True)
+    rays_o = torch.from_numpy(campos).cuda().expand(rays_v.shape) # WH, 3
+    return rays_o.transpose(0, 1), rays_v.transpose(0, 1)
+
+def gen_rays_from_params_modified(campos,resolution, resolution_level=1):
+    """
+    Interpolate pose between two cameras.
+    """
+
+    #Have to rewrite this part
+
+    #map the ray_v back to the objects and then retry the algorithm
+    H = resolution
+    W = resolution
+    l = resolution_level
+    tx = torch.linspace(0, W-1, W//l)
+    ty = torch.linspace(0, H-1, H//l)
+    pixels_x, pixels_y = torch.meshgrid(tx, ty)
+    p = torch.stack([pixels_x, pixels_y, torch.ones_like(pixels_y)], dim=1)
     rays_v = p / torch.linalg.norm(p, ord=2, dim=-1, keepdim=True)
     rays_o = torch.from_numpy(campos).cuda().expand(rays_v.shape) # WH, 3
     return rays_o.transpose(0, 1), rays_v.transpose(0, 1)
@@ -208,7 +231,7 @@ class Render_Fields(torch.nn.Module):
 
             # Loss
             color_error = (img_pred - true_rgb)
-            color_fine_loss = F.l1_loss(color_error, torch.zeros_like(color_error), reduction='mean')
+            color_fine_loss = F.l1_loss(color_error, torch.zeros_like(color_error), reduction='sum')
             # psnr = 20.0 * torch.log10(1.0 / (((color_fine - true_rgb) ** 2 * mask).sum() / (mask_sum * 3.0)).sqrt())
             #
             eikonal_loss = gradient_error
@@ -232,7 +255,7 @@ class Render_Fields(torch.nn.Module):
             # self.writer.add_scalar('Statistics/weight_max', (weight_max * mask).sum() / mask_sum, self.iter_step)
             # self.writer.add_scalar('Statistics/psnr', psnr, self.iter_step)
 
-            print(f'{loss.item()},\n')
+            # print(f'{loss.item()},\n')
 
     def ptsd(self):
         return self.SDF, self.CF
@@ -284,13 +307,13 @@ class Render_Fields(torch.nn.Module):
         # （cam_o, ray_v, rgb, 1）
         # Batch * 10
         # Batch * 3 predicted rgb
-        rays_o, rays_d = gen_rays_from_params(campos,resolution, resolution_level=resolution_level)
+        rays_o, rays_d = gen_rays_from_params(campos,resolution, resolution_level=resolution_level) # need to sample the v on the objects
         H, W, _ = rays_o.shape
         rays_o = rays_o.reshape(-1, 3)
         rays_d = rays_d.reshape(-1, 3)
 
         near, far = near_far_from_sphere(rays_o, rays_d)
-        background_rgb = None
+        background_rgb = torch.zeros([1, 3])
 
         render_out = self.renderer.render(rays_o,
                                           rays_d,
@@ -311,7 +334,9 @@ class Render_Fields(torch.nn.Module):
         # train_rgb.requires_grad = True
 
         loc = self.out_dir+ '/images_Field/'+('train_%06d.png' % i)
-        cv.imwrite(loc, img_fine)
+        if i % 1 == 0:
+            util.save_image(loc, img_fine)
+            # cv.imwrite(loc, img_fine)
         return train_rgb, render_out
 
 

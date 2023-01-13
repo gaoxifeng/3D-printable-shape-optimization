@@ -47,10 +47,32 @@ class Render_Mesh():
                                            background=None)
         for i in range(color_ref.shape[0]):
             np_result_image = color_ref[i].detach().cpu().numpy()
-            util.save_image(self.out_dir + '/images_Mesh/' + ('train_%06d.png' % iter_i), np_result_image)
+            if iter_i%1000==0:
+                util.save_image(self.out_dir + '/images_Mesh/' + ('train_%06d.png' % iter_i), np_result_image)
 
         return color_ref
+    #return color_ref, rotation_mtx, color_mask
+    #remove the unused parameters
 
+    def get_camera_rays_at_pixel(self, img, x, y, mv, p):
+        """
+        Translated from https: // github.com / gaoxifeng / TinyVisualizer / blob / main / TinyVisualizer / Camera3D.cpp
+        line 122-138
+        """
+        #img shape: B x H x W x 3
+        H = img.shape[1]
+        W = img.shape[2]
+
+        ratioX = (x - W/2)/(W/2)
+        ratioY = (y - H/2)/(H/2)
+
+        dir = np.vstack((ratioX, -ratioY, 0, 1))
+        dir = np.linalg.inv(p) @ dir
+        dir[:3] = dir[:3]/dir[-1]
+        ray = np.zeros((6,1))
+        ray[:3,:] = -mv[:3, :3].T @ mv[:3, [-1]]
+        ray[3:, :] = mv[:3, :3].T @ dir[:3]
+        return ray
 
 def main(Batch_size, mesh_dir, out_dir, resolution):
     Render = Render_Mesh(mesh_dir=mesh_dir, out_dir=out_dir)
