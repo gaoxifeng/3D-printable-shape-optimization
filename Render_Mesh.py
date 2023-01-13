@@ -46,14 +46,14 @@ class Render_Mesh():
             light_power = 0
             color_ref, mask_ref = render.render_mesh(self.glctx, _opt_ref, mvp, campos, lightpos, light_power, resolution,
                                            background=None)
-        for i in range(color_ref.shape[0]):
-            np_result_image = color_ref[i].detach().cpu().numpy()
-            np_mask_image = mask_ref[i].detach().cpu().numpy()
-            if iter_i%1000==0:
+        if iter_i % 1000 == 0:
+            for i in range(color_ref.shape[0]):
+                np_result_image = color_ref[i].detach().cpu().numpy()
+                np_mask_image = mask_ref[i].detach().cpu().numpy()
                 util.save_image(self.out_dir + '/images_Mesh/' + ('train_%06d_%03d.png' % (iter_i,i)), np_result_image)
                 util.save_image(self.out_dir + '/masks_Mesh/' + ('mask_%06d_%03d.png' % (iter_i,i)), np_mask_image)
-        _opt_ref.material = None
-        obj.write_obj(self.out_dir, _opt_ref)
+        # _opt_ref.material = None
+        # obj.write_obj(self.out_dir, _opt_ref)
         return color_ref, mask_ref
     # remove the unused parameters
 

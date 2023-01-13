@@ -29,40 +29,26 @@ def Initial_Fields(Field_Shape=[64,64,64], Method='Traditional'):
         CF = torch.randn(Field_Shape)
     return SDF, CF
 
-def gen_rays_from_params(campos,resolution, resolution_level=1):
+def get_camera_rays_at_pixel(img, x, y, mv, p):
     """
-    Interpolate pose between two cameras.
+    Translated from https: // github.com / gaoxifeng / TinyVisualizer / blob / main / TinyVisualizer / Camera3D.cpp
+    line 122-138
     """
+    #img shape: B x H x W x 3
+    H = img.shape[1]
+    W = img.shape[2]
 
-    #Have to rewrite this part
+    ratioX = (x - W/2)/(W/2)
+    ratioY = (y - H/2)/(H/2)
 
-    #map the ray_v back to the objects and then retry the algorithm
-    H = resolution
-    W = resolution
-    l = resolution_level
-    p = torch.randn((W//l,H//l,3))
-    rays_v = p / torch.linalg.norm(p, ord=2, dim=-1, keepdim=True)
-    rays_o = torch.from_numpy(campos).cuda().expand(rays_v.shape) # WH, 3
-    return rays_o.transpose(0, 1), rays_v.transpose(0, 1)
+    dir = np.vstack((ratioX, -ratioY, 0, 1))
+    dir = np.linalg.inv(p) @ dir
+    dir[:3] = dir[:3]/dir[-1]
+    ray = np.zeros((6,1))
+    ray[:3,:] = -mv[:3, :3].T @ mv[:3, [-1]]
+    ray[3:, :] = mv[:3, :3].T @ dir[:3]
+    return ray
 
-def gen_rays_from_params_modified(campos,resolution, resolution_level=1):
-    """
-    Interpolate pose between two cameras.
-    """
-
-    #Have to rewrite this part
-
-    #map the ray_v back to the objects and then retry the algorithm
-    H = resolution
-    W = resolution
-    l = resolution_level
-    tx = torch.linspace(0, W-1, W//l)
-    ty = torch.linspace(0, H-1, H//l)
-    pixels_x, pixels_y = torch.meshgrid(tx, ty)
-    p = torch.stack([pixels_x, pixels_y, torch.ones_like(pixels_y)], dim=1)
-    rays_v = p / torch.linalg.norm(p, ord=2, dim=-1, keepdim=True)
-    rays_o = torch.from_numpy(campos).cuda().expand(rays_v.shape) # WH, 3
-    return rays_o.transpose(0, 1), rays_v.transpose(0, 1)
 
 def near_far_from_sphere(rays_o, rays_d):
     a = torch.sum(rays_d**2, dim=-1, keepdim=True)
@@ -142,8 +128,6 @@ class Render_Fields(torch.nn.Module):
                                          **self.conf['model.neus_renderer'])
 
 
-        self.batch_size = 1024
-
         self.render_mesh = Render_Mesh(mesh_dir=mesh_dir, out_dir=out_dir)
 
 
@@ -151,7 +135,22 @@ class Render_Fields(torch.nn.Module):
         # self.SDF = torch.nn.Parameter(SDF)
         # self.CF = torch.nn.Parameter(CF)
 
+    def gen_rays_training(self,img, mask, mv, p):
+        B, H, W, _ = img.shape
+        idx_image = torch.randint(low=0, high=B, size=[self.batch_size]).cpu()
+        pixels_x = torch.randint(low=0, high=H, size=[self.batch_size]).cpu()
+        pixels_y = torch.randint(low=0, high=W, size=[self.batch_size]).cpu()
 
+        true_rgb = img[(idx_image,pixels_x, pixels_y)]
+        masks  = mask[(idx_image,pixels_x, pixels_y)].mean(dim=1).unsqueeze(1)
+        rays = []
+        for i in range(self.batch_size):
+            rays.append(get_camera_rays_at_pixel(img, pixels_x[i], pixels_y[i], mv[idx_image[i]], p))
+        rays = np.array(rays)
+        rays = torch.from_numpy(rays).float().squeeze(2).cuda()
+        rays_o = rays[:,:3]
+        rays_v = rays[:,3:]
+        return rays_o, rays_v, true_rgb, masks
 
     def forward(self, mvp, campos, resolution):
 
@@ -183,63 +182,58 @@ class Render_Fields(torch.nn.Module):
         # image_perm = self.get_image_perm()
         Batch_size = img_batch_size
         for iter_i in tqdm(range(res_step)):
-            # data = self.dataset.gen_random_rays_at(image_perm[self.iter_step % len(image_perm)], self.batch_size)
-            #
-            # rays_o, rays_d, true_rgb, mask = data[:, :3], data[:, 3: 6], data[:, 6: 9], data[:, 9: 10]
-            # near, far = self.dataset.near_far_from_sphere(rays_o, rays_d)
-            #
-            # background_rgb = None
-            #
-            # if self.mask_weight > 0.0:
-            #     mask = (mask > 0.5).float()
-            # else:
-            #     mask = torch.ones((self.batch_size,1))
-            # #
-            # mask_sum = mask.sum() + 1e-5
-            # render_out = self.renderer.render(rays_o, rays_d, near, far,
-            #                                   background_rgb=background_rgb,
-            #                                   cos_anneal_ratio=self.get_cos_anneal_ratio())
-
+            # print(iter_i)
             proj_mtx = util.projection(x=0.4, f=1000.0)
             mvp = np.zeros((Batch_size, 4, 4), dtype=np.float32)
             campos = np.zeros((Batch_size, 3), dtype=np.float32)
             lightpos = np.zeros((Batch_size, 3), dtype=np.float32)
-
+            r_mv = np.zeros((Batch_size, 4, 4),dtype=np.float32)
             # We still take the lightpos as input, but we output the same rgb intensity for different views
             for b in range(Batch_size):
                 # Random rotation/translation matrix for optimization.
                 r_rot = util.random_rotation_translation(0.25)  # (4,4)
-                r_mv = np.matmul(util.translate(0, 0, -RADIUS), r_rot)  # (4,4)
-                mvp[b] = np.matmul(proj_mtx, r_mv).astype(np.float32)  # (B,4,4)
-                campos[b] = np.linalg.inv(r_mv)[:3, 3]  # (B,3)
+                r_mv[b] = np.matmul(util.translate(0, 0, -RADIUS), r_rot)  # (4,4)
+                mvp[b] = np.matmul(proj_mtx, r_mv[b]).astype(np.float32)  # (B,4,4)
+                campos[b] = np.linalg.inv(r_mv[b])[:3, 3]  # (B,3)
                 lightpos[b] = util.cosine_sample(campos[b])  # (B,3)
 
-            true_rgb = self.render_mesh.render(mvp, campos, lightpos, resolution, iter_i)
+            img_rgb, mask_rgb = self.render_mesh.render(mvp, campos, lightpos, resolution, iter_i)
 
+            #####Generate the rays_o, rays_v, masks from different images here
+            rays_o, rays_v, true_rgb, mask = self.gen_rays_training(img_rgb, mask_rgb, r_mv, proj_mtx)
+            del img_rgb, mask_rgb
+            near, far = near_far_from_sphere(rays_o, rays_v)
 
+            if self.mask_weight > 0.0:
+                mask = (mask > 0.5).float()
+            else:
+                mask = torch.ones_like(mask)
 
+            mask_sum = mask.sum() + 1e-5
 
+            render_out = self.renderer.render(rays_o, rays_v, near, far,
+                                              background_rgb=None,
+                                              cos_anneal_ratio=self.get_cos_anneal_ratio())
 
-            img_pred, render_out = self.render_image_Neus(campos, resolution, 1, iter_i)
-
-            # color_fine = render_out['color_fine']
-            # s_val = render_out['s_val']
-            # cdf_fine = render_out['cdf_fine']
+            color_fine = render_out['color_fine']
+            s_val = render_out['s_val']
+            cdf_fine = render_out['cdf_fine']
             gradient_error = render_out['gradient_error']
-            # weight_max = render_out['weight_max']
-            # weight_sum = render_out['weight_sum']
+            weight_max = render_out['weight_max']
+            weight_sum = render_out['weight_sum']
 
             # Loss
-            color_error = (img_pred - true_rgb)
-            color_fine_loss = F.l1_loss(color_error, torch.zeros_like(color_error), reduction='sum')
-            # psnr = 20.0 * torch.log10(1.0 / (((color_fine - true_rgb) ** 2 * mask).sum() / (mask_sum * 3.0)).sqrt())
-            #
-            eikonal_loss = gradient_error
-            #
-            # mask_loss = F.binary_cross_entropy(weight_sum.clip(1e-3, 1.0 - 1e-3), mask)
+            color_error = (color_fine - true_rgb) * mask
+            color_fine_loss = F.l1_loss(color_error, torch.zeros_like(color_error), reduction='sum') / mask_sum
+            # psnr = 20.0 * torch.log10(1.0 / (((color_fine - true_rgb)**2 * mask).sum() / (mask_sum * 3.0)).sqrt())
 
-            loss = color_fine_loss + eikonal_loss * self.igr_weight #+ \
-                   # mask_loss * self.mask_weight
+            eikonal_loss = gradient_error
+
+            mask_loss = F.binary_cross_entropy(weight_sum.clip(1e-3, 1.0 - 1e-3), mask)
+
+            loss = color_fine_loss +\
+                   eikonal_loss * self.igr_weight +\
+                   mask_loss * self.mask_weight
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -300,44 +294,47 @@ class Render_Fields(torch.nn.Module):
     #     return train_rgb, grad_error
 
 
-    def render_image_Neus(self, campos, resolution, resolution_level, i):
-        """
-        render image with a input campos
-        """
-        # （cam_o, ray_v, rgb, 1）
-        # Batch * 10
-        # Batch * 3 predicted rgb
-        rays_o, rays_d = gen_rays_from_params(campos,resolution, resolution_level=resolution_level) # need to sample the v on the objects
-        H, W, _ = rays_o.shape
-        rays_o = rays_o.reshape(-1, 3)
-        rays_d = rays_d.reshape(-1, 3)
-
-        near, far = near_far_from_sphere(rays_o, rays_d)
-        background_rgb = torch.zeros([1, 3])
-
-        render_out = self.renderer.render(rays_o,
-                                          rays_d,
-                                          near,
-                                          far,
-                                          cos_anneal_ratio=self.get_cos_anneal_ratio(),
-                                          background_rgb=background_rgb)
-
-        # out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
-        # grad+=render_out['gradient_error'].detach()
-        # # train_rgb.append(render_out['color_fine'])
-        #
-        # del render_out
-        train_rgb = (render_out['color_fine'].detach().cpu().numpy().reshape([H, W, 3]) * 256).clip(0, 255)
-        img_fine = train_rgb.astype(np.uint8)
-        train_rgb = torch.from_numpy(train_rgb).cuda().unsqueeze(dim=0)
-        # grad_error = torch.mean(grad)
-        # train_rgb.requires_grad = True
-
-        loc = self.out_dir+ '/images_Field/'+('train_%06d.png' % i)
-        if i % 1 == 0:
-            util.save_image(loc, img_fine)
-            # cv.imwrite(loc, img_fine)
-        return train_rgb, render_out
+    """
+    This function needs to be updated. 
+    """
+    # def render_image_Neus(self, campos, resolution, resolution_level, i):
+    #     """
+    #     render image with a input campos
+    #     """
+    #     # （cam_o, ray_v, rgb, 1）
+    #     # Batch * 10
+    #     # Batch * 3 predicted rgb
+    #     rays_o, rays_d = gen_rays_from_params(campos,resolution, resolution_level=resolution_level) # need to sample the v on the objects
+    #     H, W, _ = rays_o.shape
+    #     rays_o = rays_o.reshape(-1, 3)
+    #     rays_d = rays_d.reshape(-1, 3)
+    #
+    #     near, far = near_far_from_sphere(rays_o, rays_d)
+    #     background_rgb = torch.zeros([1, 3])
+    #
+    #     render_out = self.renderer.render(rays_o,
+    #                                       rays_d,
+    #                                       near,
+    #                                       far,
+    #                                       cos_anneal_ratio=self.get_cos_anneal_ratio(),
+    #                                       background_rgb=background_rgb)
+    #
+    #     # out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
+    #     # grad+=render_out['gradient_error'].detach()
+    #     # # train_rgb.append(render_out['color_fine'])
+    #     #
+    #     # del render_out
+    #     train_rgb = (render_out['color_fine'].detach().cpu().numpy().reshape([H, W, 3]) * 256).clip(0, 255)
+    #     img_fine = train_rgb.astype(np.uint8)
+    #     train_rgb = torch.from_numpy(train_rgb).cuda().unsqueeze(dim=0)
+    #     # grad_error = torch.mean(grad)
+    #     # train_rgb.requires_grad = True
+    #
+    #     loc = self.out_dir+ '/images_Field/'+('train_%06d.png' % i)
+    #     if i % 1 == 0:
+    #         util.save_image(loc, img_fine)
+    #         # cv.imwrite(loc, img_fine)
+    #     return train_rgb, render_out
 
 
 
@@ -359,7 +356,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     torch.cuda.set_device(args.gpu)
-    args.conf = './confs/womask_f16.conf'
+    args.conf = './confs/wmask_f16.conf'
     args.field_shape = [64, 64, 64]
     args.method = 'Network'
     args.mode = 'train'
@@ -367,7 +364,7 @@ if __name__ == "__main__":
     args.mesh_dir = 'data/f16/f16.obj'
     args.out_dir = 'F16'
     runner = Render_Fields(args.mesh_dir, args.out_dir, args.conf, args.field_shape, args.method, args.mode, args.case)
-    runner.train(1, 25)
+    runner.train(4, 512)
 
 
 
