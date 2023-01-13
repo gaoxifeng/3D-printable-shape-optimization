@@ -69,12 +69,14 @@ def shade(
         shaded_col = (gb_tangent + 1.0)*0.5
     elif material['bsdf'] == 'Null':
         shaded_col = kd
+    elif material['bsdf'] == 'MASK':
+        shaded_col = torch.ones_like(kd)
     else:
         assert False, "Invalid BSDF '%s'" % material['bsdf']
 
     out = torch.cat((shaded_col, alpha), dim=-1)
-
-    return out
+    mask = torch.cat((torch.ones_like(kd), alpha), dim=-1)
+    return out, mask
 
 # ==============================================================================================
 #  Render a depth slice of the mesh (scene), some limitations:
@@ -137,7 +139,7 @@ def render_layer(
     # Shade
     ################################################################################
 
-    color = shade(gb_pos, gb_geometric_normal, gb_normal, gb_tangent, gb_texc, gb_texc_deriv, 
+    color, mask = shade(gb_pos, gb_geometric_normal, gb_normal, gb_tangent, gb_texc, gb_texc_deriv,
         view_pos, light_pos, light_power, mesh.material, min_roughness)
 
     ################################################################################
@@ -147,9 +149,10 @@ def render_layer(
     # Scale back up to visibility resolution if using MSAA
     if spp > 1 and msaa:
         color = util.scale_img_nhwc(color, [full_res, full_res], mag='nearest', min='nearest')
+        mask = util.scale_img_nhwc(mask, [full_res, full_res], mag='nearest', min='nearest')
 
     # Return color & raster output for peeling
-    return color
+    return color, mask
 
 
 # ==============================================================================================
@@ -207,14 +210,22 @@ def render_mesh(
 
     # Composite BACK-TO-FRONT
     for color, rast in reversed(layers):
+        mask = color[1]
+        color = color[0]
         alpha     = (rast[..., -1:] > 0) * color[..., 3:4]
         accum_col = torch.lerp(accum_col, color[..., 0:3], alpha)
         if antialias:
             accum_col = dr.antialias(accum_col.contiguous(), rast, v_pos_clip, mesh.t_pos_idx.int()) # TODO: need to support bfloat16
 
-    # Downscale to framebuffer resolution. Use avg pooling 
-    out = util.avg_pool_nhwc(accum_col, spp) if spp > 1 else accum_col
+        alpha2     = (rast[..., -1:] > 0) * mask[..., 3:4]
+        accum_col2 = torch.lerp(accum_col, mask[..., 0:3], alpha)
+        if antialias:
+            accum_col2 = dr.antialias(accum_col2.contiguous(), rast, v_pos_clip, mesh.t_pos_idx.int()) # TODO: need to support bfloat16
 
-    return out
+    # Downscale to framebuffer resolution. Use avg pooling
+    out = util.avg_pool_nhwc(accum_col, spp) if spp > 1 else accum_col
+    mask = util.avg_pool_nhwc(accum_col2, spp) if spp > 1 else accum_col2
+
+    return out, mask
 
 

@@ -36,6 +36,7 @@ class Render_Mesh():
         os.makedirs(self.out_dir, exist_ok=True)
         # os.makedirs(os.path.join(self.out_dir, "mesh_Mesh"), exist_ok=True)
         os.makedirs(os.path.join(self.out_dir, "images_Mesh"), exist_ok=True)
+        os.makedirs(os.path.join(self.out_dir, "masks_Mesh"), exist_ok=True)
 
     def render(self, mvp, campos, lightpos, resolution, iter_i, mesh_scale=2.0):
         # lightpos = util.cosine_sample(campos) * RADIUS #This is not used when we generate the images
@@ -43,16 +44,17 @@ class Render_Mesh():
         _opt_ref = mesh.center_by_reference(self.render_ref_mesh.eval(params), self.ref_mesh_aabb, mesh_scale)
         with torch.no_grad():
             light_power = 0
-            color_ref = render.render_mesh(self.glctx, _opt_ref, mvp, campos, lightpos, light_power, resolution,
+            color_ref, mask_ref = render.render_mesh(self.glctx, _opt_ref, mvp, campos, lightpos, light_power, resolution,
                                            background=None)
         for i in range(color_ref.shape[0]):
             np_result_image = color_ref[i].detach().cpu().numpy()
+            np_mask_image = mask_ref[i].detach().cpu().numpy()
             if iter_i%1000==0:
-                util.save_image(self.out_dir + '/images_Mesh/' + ('train_%06d.png' % iter_i), np_result_image)
+                util.save_image(self.out_dir + '/images_Mesh/' + ('train_%06d_%03d.png' % (iter_i,i)), np_result_image)
+                util.save_image(self.out_dir + '/masks_Mesh/' + ('mask_%06d_%03d.png' % (iter_i,i)), np_mask_image)
         _opt_ref.material = None
         obj.write_obj(self.out_dir, _opt_ref)
-        return color_ref
-    # return color_ref, rotation_mtx, color_mask
+        return color_ref, mask_ref
     # remove the unused parameters
 
     def get_camera_rays_at_pixel(self, img, x, y, mv, p):
@@ -91,7 +93,7 @@ def main(Batch_size, mesh_dir, out_dir, resolution):
         campos[b] = np.linalg.inv(r_mv)[:3, 3]  # (B,3)
         lightpos[b] = util.cosine_sample(campos[b])  # (B,3)
 
-    images = Render.render(mvp, campos, lightpos, resolution, 1000)
+    images, mask = Render.render(mvp, campos, lightpos, resolution, 1000)
 
     #verify that rays are recovered from the correct pixels
     pts = np.zeros((1,3))
@@ -114,7 +116,7 @@ def main(Batch_size, mesh_dir, out_dir, resolution):
 # N C H W
 
 if __name__ == "__main__":
-    main(1, 'data/f16/f16.obj', 'F16', 512)
+    main(5, 'data/f16/f16.obj', 'F16', 512)
 
 
 
