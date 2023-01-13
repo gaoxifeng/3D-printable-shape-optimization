@@ -49,10 +49,11 @@ class Render_Mesh():
             np_result_image = color_ref[i].detach().cpu().numpy()
             if iter_i%1000==0:
                 util.save_image(self.out_dir + '/images_Mesh/' + ('train_%06d.png' % iter_i), np_result_image)
-
+        _opt_ref.material = None
+        obj.write_obj(self.out_dir, _opt_ref)
         return color_ref
-    #return color_ref, rotation_mtx, color_mask
-    #remove the unused parameters
+    # return color_ref, rotation_mtx, color_mask
+    # remove the unused parameters
 
     def get_camera_rays_at_pixel(self, img, x, y, mv, p):
         """
@@ -90,9 +91,24 @@ def main(Batch_size, mesh_dir, out_dir, resolution):
         campos[b] = np.linalg.inv(r_mv)[:3, 3]  # (B,3)
         lightpos[b] = util.cosine_sample(campos[b])  # (B,3)
 
-    images = Render.render(mvp, campos, lightpos, resolution)
+    images = Render.render(mvp, campos, lightpos, resolution, 1000)
 
-    params = {}
+    #verify that rays are recovered from the correct pixels
+    pts = np.zeros((1,3))
+    dt = np.linspace(0.01, 5, 512)
+    for i in range(10):
+        x = np.random.randint(0,resolution-1)
+        y = np.random.randint(0,resolution-1)
+        print(x, y, images[0, x, y]) # print each ray and its rendered image pixel value
+        ray = Render.get_camera_rays_at_pixel(images, x, y, r_mv, proj_mtx) # get ray_o and ray_v
+        mm = ray[:3, [0]].T + (dt * ray[3:, [0]]).T #generate the points on this ray with mm = ray_o + dt*ray_v
+        pts = np.vstack((pts, mm))
+
+    with open(f'Result_Nvdiff/{out_dir}/rays.obj', "w") as f:
+        print("    writing %d vertices" % pts.shape[0])
+        for i in range(1,pts.shape[0]):
+            f.write('v {} {} {} \n'.format(pts[i,0], pts[i,1], pts[i,2]))
+
 
 
 # N C H W
