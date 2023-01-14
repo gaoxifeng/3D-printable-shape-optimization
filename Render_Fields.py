@@ -29,14 +29,14 @@ def Initial_Fields(Field_Shape=[64,64,64], Method='Traditional'):
         CF = torch.randn(Field_Shape)
     return SDF, CF
 
-def get_camera_rays_at_pixel(img, x, y, mv, p):
+def get_camera_rays_at_pixel(H, W, x, y, mv, p):
     """
     Translated from https: // github.com / gaoxifeng / TinyVisualizer / blob / main / TinyVisualizer / Camera3D.cpp
     line 122-138
     """
     #img shape: B x H x W x 3
-    H = img.shape[1]
-    W = img.shape[2]
+    # H = img.shape[1]
+    # W = img.shape[2]
 
     ratioX = (x - W/2)/(W/2)
     ratioY = (y - H/2)/(H/2)
@@ -145,12 +145,29 @@ class Render_Fields(torch.nn.Module):
         masks  = mask[(idx_image,pixels_x, pixels_y)].mean(dim=1).unsqueeze(1)
         rays = []
         for i in range(self.batch_size):
-            rays.append(get_camera_rays_at_pixel(img, pixels_x[i], pixels_y[i], mv[idx_image[i]], p))
+            rays.append(get_camera_rays_at_pixel(H, W, pixels_x[i], pixels_y[i], mv[idx_image[i]], p))
         rays = np.array(rays)
         rays = torch.from_numpy(rays).float().squeeze(2).cuda()
         rays_o = rays[:,:3]
         rays_v = rays[:,3:]
         return rays_o, rays_v, true_rgb, masks
+
+    def gen_rays_validating(self, H, W, mv, p, img_N):
+        tx = torch.linspace(0, W - 1, W)
+        ty = torch.linspace(0, H - 1, H)
+        pixels_x, pixels_y = torch.meshgrid(tx, ty)
+        ppp = torch.stack([pixels_x, pixels_y], dim=-1).reshape(-1,2).detach().cpu()
+        rays = []
+        for i in range(ppp.shape[0]):
+            rays.append(get_camera_rays_at_pixel(H, W, ppp[i,0], ppp[i,1], mv[img_N], p))
+        rays = np.array(rays)
+        rays = torch.from_numpy(rays).float().squeeze(2).cuda()
+        rays_o = rays[:,:3]
+        rays_v = rays[:,3:]
+        return rays_o, rays_v
+
+
+
 
     def forward(self, mvp, campos, resolution):
 
@@ -181,6 +198,8 @@ class Render_Fields(torch.nn.Module):
         res_step = self.end_iter - self.iter_step
         # image_perm = self.get_image_perm()
         Batch_size = img_batch_size
+        H = resolution
+        W = resolution
         for iter_i in tqdm(range(res_step)):
             # print(iter_i)
             proj_mtx = util.projection(x=0.4, f=1000.0)
@@ -198,6 +217,7 @@ class Render_Fields(torch.nn.Module):
                 lightpos[b] = util.cosine_sample(campos[b])  # (B,3)
 
             img_rgb, mask_rgb = self.render_mesh.render(mvp, campos, lightpos, resolution, iter_i)
+
 
             #####Generate the rays_o, rays_v, masks from different images here
             rays_o, rays_v, true_rgb, mask = self.gen_rays_training(img_rgb, mask_rgb, r_mv, proj_mtx)
@@ -248,50 +268,42 @@ class Render_Fields(torch.nn.Module):
             # self.writer.add_scalar('Statistics/cdf', (cdf_fine[:, :1] * mask).sum() / mask_sum, self.iter_step)
             # self.writer.add_scalar('Statistics/weight_max', (weight_max * mask).sum() / mask_sum, self.iter_step)
             # self.writer.add_scalar('Statistics/psnr', psnr, self.iter_step)
-
+            if iter_i%1000==0:
+                self.render_image_Neus(H, W, r_mv, proj_mtx, 1, iter_i)
             # print(f'{loss.item()},\n')
 
     def ptsd(self):
         return self.SDF, self.CF
 
-    # def render_image_Neus(self, campos, resolution, resolution_level, i):
-    #     """
-    #     render image with a input campos
-    #     """
-    #     # （cam_o, ray_v, rgb, 1）
-    #     # Batch * 10
-    #     # Batch * 3 predicted rgb
-    #     rays_o, rays_d = gen_rays_from_params(campos,resolution, resolution_level=resolution_level)
-    #     H, W, _ = rays_o.shape
-    #     rays_o = rays_o.reshape(-1, 3).split(self.batch_size)
-    #     rays_d = rays_d.reshape(-1, 3).split(self.batch_size)
-    #
-    #     out_rgb_fine = []
-    #     grad = 0
-    #     for rays_o_batch, rays_d_batch in zip(rays_o, rays_d):
-    #         near, far = near_far_from_sphere(rays_o_batch, rays_d_batch)
-    #         background_rgb = None
-    #
-    #         render_out = self.renderer.render(rays_o_batch,
-    #                                           rays_d_batch,
-    #                                           near,
-    #                                           far,
-    #                                           cos_anneal_ratio=self.get_cos_anneal_ratio(),
-    #                                           background_rgb=background_rgb)
-    #
-    #         out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
-    #         grad+=render_out['gradient_error'].detach()
-    #         # train_rgb.append(render_out['color_fine'])
-    #
-    #         del render_out
-    #     train_rgb = (np.concatenate(out_rgb_fine, axis=0).reshape([H, W, 3]) * 256).clip(0, 255)
-    #     train_rgb = torch.from_numpy(train_rgb).cuda().unsqueeze(dim=0)
-    #     grad_error = torch.mean(grad)
-    #     train_rgb.requires_grad = True
-    #     img_fine = (np.concatenate(out_rgb_fine, axis=0).reshape([H, W, 3]) * 256).clip(0, 255).astype(np.uint8)
-    #     loc = self.out_dir+ '/images_Field/'+('train_%06d.png' % i)
-    #     cv.imwrite(loc, img_fine)
-    #     return train_rgb, grad_error
+    def render_image_Neus(self, H, W, mv, p, img_N, iter_i):
+        """
+        render image with a input campos
+        """
+        # （cam_o, ray_v, rgb, 1）
+        # Batch * 10
+        # Batch * 3 predicted rgb
+        rays_o, rays_v = self.gen_rays_validating(H, W, mv, p, img_N)
+        rays_o = rays_o.split(self.batch_size)
+        rays_d = rays_v.split(self.batch_size)
+
+        out_rgb_fine = []
+        for rays_o_batch, rays_d_batch in zip(rays_o, rays_d):
+            near, far = near_far_from_sphere(rays_o_batch, rays_d_batch)
+            background_rgb = None
+
+            render_out = self.renderer.render(rays_o_batch,
+                                              rays_d_batch,
+                                              near,
+                                              far,
+                                              background_rgb=background_rgb,
+                                              cos_anneal_ratio=self.get_cos_anneal_ratio())
+
+            out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
+            del render_out
+        img_fine = (np.concatenate(out_rgb_fine, axis=0).reshape([H, W, 3]) * 256).clip(0, 255).astype(np.uint8)
+        loc = self.out_dir+ '/images_Field/'+('train_%06d_%03d.png' % (iter_i, img_N))
+        util.save_image(loc, img_fine)
+
 
 
     """
