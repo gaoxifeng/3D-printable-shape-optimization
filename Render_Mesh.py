@@ -69,6 +69,9 @@ class Render_Mesh():
         ratioX = (x - W/2)/(W/2)
         ratioY = (y - H/2)/(H/2)
 
+        Rot = np.array([[0, -1, 0, 0], [1, 0, 0, 0], [0, 0, 1, 0], [0,0,0,1]])
+        mv = Rot @ mv
+
         dir = np.vstack((ratioX, -ratioY, 0, 1))
         dir = np.linalg.inv(p) @ dir
         dir[:3] = dir[:3]/dir[-1]
@@ -117,6 +120,11 @@ def main(Batch_size, mesh_dir, out_dir, resolution):
 
 if __name__ == "__main__":
     main(5, 'data/f16/f16.obj', 'F16', 512)
+    # r > g r>b
+    # for x y
+    #     rgb = img[x,y]
+    # add = figure(rgb)
+
 
 
 
