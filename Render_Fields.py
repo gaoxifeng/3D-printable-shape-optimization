@@ -41,6 +41,9 @@ def get_camera_rays_at_pixel(H, W, x, y, mv, p):
     ratioX = (x - W/2)/(W/2)
     ratioY = (y - H/2)/(H/2)
 
+    Rot = np.array([[0, -1, 0, 0], [1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
+    mv = Rot @ mv
+
     dir = np.vstack((ratioX, -ratioY, 0, 1))
     dir = np.linalg.inv(p) @ dir
     dir[:3] = dir[:3]/dir[-1]
@@ -134,7 +137,18 @@ class Render_Fields(torch.nn.Module):
 
         # self.SDF = torch.nn.Parameter(SDF)
         # self.CF = torch.nn.Parameter(CF)
+    def save_checkpoint(self):
+        checkpoint = {
+            'nerf': self.nerf_outside.state_dict(),
+            'sdf_network_fine': self.sdf_network.state_dict(),
+            'variance_network_fine': self.deviation_network.state_dict(),
+            'color_network_fine': self.color_network.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+            'iter_step': self.iter_step,
+        }
 
+        os.makedirs(os.path.join(self.base_exp_dir, 'checkpoints'), exist_ok=True)
+        torch.save(checkpoint, os.path.join(self.base_exp_dir, 'checkpoints', 'ckpt_{:0>6d}.pth'.format(self.iter_step)))
     def gen_rays_training(self,img, mask, mv, p):
         B, H, W, _ = img.shape
         idx_image = torch.randint(low=0, high=B, size=[self.batch_size]).cpu()
@@ -224,6 +238,9 @@ class Render_Fields(torch.nn.Module):
             del img_rgb, mask_rgb
             near, far = near_far_from_sphere(rays_o, rays_v)
 
+            # true_rgb[:,[0]] = torch.ones_like(true_rgb[:,[0]])
+            # true_rgb[:, [1]] = torch.zeros_like(true_rgb[:, [1]])
+            # true_rgb[:, [2]] = torch.zeros_like(true_rgb[:, [2]])
             if self.mask_weight > 0.0:
                 mask = (mask > 0.5).float()
             else:
@@ -272,6 +289,21 @@ class Render_Fields(torch.nn.Module):
                 self.render_image_Neus(H, W, r_mv, proj_mtx, 1, iter_i)
             # print(f'{loss.item()},\n')
 
+            if self.iter_step % self.report_freq == 0:
+                print(self.base_exp_dir)
+                print('iter:{:8>d} loss = {} lr={}'.format(self.iter_step, loss, self.optimizer.param_groups[0]['lr']))
+
+            if self.iter_step % self.save_freq == 0:
+                self.save_checkpoint()
+
+            # if self.iter_step % self.val_freq == 0:
+            #     self.validate_image()
+
+            # if self.iter_step % self.val_mesh_freq == 0:
+            #     self.validate_mesh()
+
+            self.update_learning_rate()
+
     def ptsd(self):
         return self.SDF, self.CF
 
@@ -286,7 +318,27 @@ class Render_Fields(torch.nn.Module):
         rays_o = rays_o.split(self.batch_size)
         rays_d = rays_v.split(self.batch_size)
 
+        # out_rgb_fine = []
+        # for rays_o_batch, rays_d_batch in zip(rays_o, rays_d):
+        #     near, far = near_far_from_sphere(rays_o_batch, rays_d_batch)
+        #     background_rgb = None
+        #
+        #     render_out = self.renderer.render(rays_o_batch,
+        #                                       rays_d_batch,
+        #                                       near,
+        #                                       far,
+        #                                       background_rgb=background_rgb,
+        #                                       cos_anneal_ratio=self.get_cos_anneal_ratio())
+        #
+        #     out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
+        #     del render_out
+        # img_fine = (np.concatenate(out_rgb_fine, axis=0).reshape([H, W, 3]) * 256).clip(0, 255).astype(np.uint8)
+        # loc = self.out_dir+ '/images_Field/'+('train_%06d_%03d.png' % (iter_i, img_N))
+        # util.save_image(loc, img_fine)
+
         out_rgb_fine = []
+        out_normal_fine = []
+
         for rays_o_batch, rays_d_batch in zip(rays_o, rays_d):
             near, far = near_far_from_sphere(rays_o_batch, rays_d_batch)
             background_rgb = None
@@ -295,14 +347,45 @@ class Render_Fields(torch.nn.Module):
                                               rays_d_batch,
                                               near,
                                               far,
-                                              background_rgb=background_rgb,
-                                              cos_anneal_ratio=self.get_cos_anneal_ratio())
+                                              cos_anneal_ratio=self.get_cos_anneal_ratio(),
+                                              background_rgb=background_rgb)
 
-            out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
+            def feasible(key):
+                return (key in render_out) and (render_out[key] is not None)
+
+            if feasible('color_fine'):
+                out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
+            if feasible('gradients') and feasible('weights'):
+                n_samples = self.renderer.n_samples + self.renderer.n_importance
+                normals = render_out['gradients'] * render_out['weights'][:, :n_samples, None]
+                if feasible('inside_sphere'):
+                    normals = normals * render_out['inside_sphere'][..., None]
+                normals = normals.sum(dim=1).detach().cpu().numpy()
+                out_normal_fine.append(normals)
             del render_out
-        img_fine = (np.concatenate(out_rgb_fine, axis=0).reshape([H, W, 3]) * 256).clip(0, 255).astype(np.uint8)
-        loc = self.out_dir+ '/images_Field/'+('train_%06d_%03d.png' % (iter_i, img_N))
-        util.save_image(loc, img_fine)
+
+        img_fine = None
+        if len(out_rgb_fine) > 0:
+            img_fine = (np.concatenate(out_rgb_fine, axis=0).reshape([H, W, 3, -1]) * 256).clip(0, 255)
+
+        # normal_img = None
+        # if len(out_normal_fine) > 0:
+        #     normal_img = np.concatenate(out_normal_fine, axis=0)
+        #     rot = np.linalg.inv(self.dataset.pose_all[idx, :3, :3].detach().cpu().numpy())
+        #     normal_img = (np.matmul(rot[None, :, :], normal_img[:, :, None])
+        #                   .reshape([H, W, 3, -1]) * 128 + 128).clip(0, 255)
+
+        os.makedirs(os.path.join(self.base_exp_dir, 'validations_fine'), exist_ok=True)
+        # os.makedirs(os.path.join(self.base_exp_dir, 'normals'), exist_ok=True)
+        loc = self.out_dir + '/images_Field/' + ('train_%06d_%03d.png' % (iter_i, img_N))
+        for i in range(img_fine.shape[-1]):
+            if len(out_rgb_fine) > 0:
+                cv.imwrite(loc,img_fine[..., i])
+            # if len(out_normal_fine) > 0:
+            #     cv.imwrite(os.path.join(self.base_exp_dir,
+            #                             'normals',
+            #                             '{:0>8d}_{}_{}.png'.format(self.iter_step, i, idx)),
+            #                normal_img[..., i])
 
 
 
