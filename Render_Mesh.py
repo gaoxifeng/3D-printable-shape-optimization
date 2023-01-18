@@ -46,7 +46,7 @@ class Render_Mesh():
             light_power = 0
             color_ref, mask_ref = render.render_mesh(self.glctx, _opt_ref, mvp, campos, lightpos, light_power, resolution,
                                            background=None)
-        if iter_i % 1000 == 0:
+        if iter_i % 2500 == 0:
             for i in range(color_ref.shape[0]):
                 np_result_image = color_ref[i].detach().cpu().numpy()
                 np_mask_image = mask_ref[i].detach().cpu().numpy()
