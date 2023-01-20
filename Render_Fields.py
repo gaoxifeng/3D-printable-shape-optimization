@@ -13,6 +13,7 @@ from NeuS_src.renderer import NeuSRenderer
 from Nvdiff_src import util
 from Render_Mesh import Render_Mesh
 from torch.utils.tensorboard import SummaryWriter
+from Grid_renderer import Grid_renderer
 RADIUS = 3.5
 """
 Generate a framework to run it first and then try to switch it to traditional format
@@ -62,19 +63,36 @@ def near_far_from_sphere(rays_o, rays_d):
     return near, far
 
 class Render_Fields(torch.nn.Module):
-    def __init__(self, mesh_dir, out_dir,conf_path, Field_Shape=[64,64,64], Method='Traditional', mode='train', case='CASE_NAME'):
+    def __init__(self, mesh_dir, out_dir,conf_path, Field_Shape=[1,4,4, 8, 16], Method='Traditional', mode='train', case='CASE_NAME'):
         super().__init__()
-        self.out_dir = 'Result_NeuS/' + out_dir
-        os.makedirs(self.out_dir, exist_ok=True)
-        os.makedirs(os.path.join(self.out_dir, "mesh_Field"), exist_ok=True)
-        os.makedirs(os.path.join(self.out_dir, "images_Field"), exist_ok=True)
+
+        self.method = Method
 
         if Method == 'Traditional':
-            SDF = torch.from_numpy(np.random.random(Field_Shape)).float()
-            # self.SDF.requires_grad = True
-            CF = torch.from_numpy(np.zeros(Field_Shape)).float()
-            # self.CF.requires_grad = True
+            self.out_dir = 'Result_Grid/' + out_dir
+            self.base_exp_dir = 'Result_Grid/' + out_dir + 'exp'
+            os.makedirs(self.base_exp_dir, exist_ok=True)
+            self.end_iter = 200000
+            self.batch_size = 2048
+            self.mask_weight = 0.01
+            self.igr_weight = 0.1
+            self.anneal_end = 0
+
+            # FD = torch.from_numpy(np.random.random(Field_Shape)).float().cuda()
+            FD = torch.zeros(Field_Shape).cuda()
+            self.grid_renderer = Grid_renderer(FD,
+                                          n_samples=64,
+                                          n_importance = 64,
+                                          n_outside = 0,
+                                          up_sample_steps = 4,
+                                          perturb = 1.0,
+                                          variance= 0.2)
+            self.optimizer = torch.optim.Adam(self.grid_renderer.parameters(), lr=0.001)
+
+
+
         elif Method == 'Network':
+            self.out_dir = 'Result_NeuS/' + out_dir
             self.device = torch.device('cuda')
 
             # Configuration
@@ -88,7 +106,7 @@ class Render_Fields(torch.nn.Module):
             self.conf['dataset.data_dir'] = self.conf['dataset.data_dir'].replace('CASE_NAME', case)
             self.base_exp_dir = self.conf['general.base_exp_dir']
             os.makedirs(self.base_exp_dir, exist_ok=True)
-            self.iter_step = 0
+
 
             # Training parameters
             self.end_iter = self.conf.get_int('train.end_iter')
@@ -130,6 +148,10 @@ class Render_Fields(torch.nn.Module):
                                          self.color_network,
                                          **self.conf['model.neus_renderer'])
 
+        os.makedirs(self.out_dir, exist_ok=True)
+        os.makedirs(os.path.join(self.out_dir, "mesh_Field"), exist_ok=True)
+        os.makedirs(os.path.join(self.out_dir, "images_Field"), exist_ok=True)
+        self.iter_step = 0
 
         self.render_mesh = Render_Mesh(mesh_dir=mesh_dir, out_dir=out_dir)
 
@@ -137,6 +159,7 @@ class Render_Fields(torch.nn.Module):
 
         # self.SDF = torch.nn.Parameter(SDF)
         # self.CF = torch.nn.Parameter(CF)
+
     def save_checkpoint(self):
         checkpoint = {
             'nerf': self.nerf_outside.state_dict(),
@@ -180,17 +203,6 @@ class Render_Fields(torch.nn.Module):
         rays_v = rays[:,3:]
         return rays_o, rays_v
 
-
-
-
-    def forward(self, mvp, campos, resolution):
-
-        # image = torch.randn([mvp.shape[0],resolution,resolution,3])
-        # print(image)
-        # image.requires_grad = True
-        image = 2*self.SDF+self.CF
-        # image.requires_grad = True
-        return image
     def get_cos_anneal_ratio(self):
         if self.anneal_end == 0.0:
             return 1.0
@@ -208,7 +220,8 @@ class Render_Fields(torch.nn.Module):
             g['lr'] = self.learning_rate * learning_factor
     def train(self, img_batch_size, resolution):
         self.writer = SummaryWriter(log_dir=os.path.join(self.base_exp_dir, 'logs'))
-        self.update_learning_rate()
+        if self.method == 'Network':
+            self.update_learning_rate()
         res_step = self.end_iter - self.iter_step
         # image_perm = self.get_image_perm()
         Batch_size = img_batch_size
@@ -235,8 +248,20 @@ class Render_Fields(torch.nn.Module):
 
             #####Generate the rays_o, rays_v, masks from different images here
             rays_o, rays_v, true_rgb, mask = self.gen_rays_training(img_rgb, mask_rgb, r_mv, proj_mtx)
+
+            # with torch.no_grad():
+            #     rays_o -= rays_o.min(1, keepdim=True)[0]
+            #     rays_o /= rays_o.max(1, keepdim=True)[0]
+            #     rays_o = (rays_o - 0.5) / 0.5
+            #
+            #     rays_v -= rays_v.min(1, keepdim=True)[0]
+            #     rays_v /= rays_v.max(1, keepdim=True)[0]
+            #     rays_v = (rays_v - 0.5) / 0.5
+
             del img_rgb, mask_rgb
             near, far = near_far_from_sphere(rays_o, rays_v)
+
+
 
             # true_rgb[:,[0]] = torch.ones_like(true_rgb[:,[0]])
             # true_rgb[:, [1]] = torch.zeros_like(true_rgb[:, [1]])
@@ -248,9 +273,14 @@ class Render_Fields(torch.nn.Module):
 
             mask_sum = mask.sum() + 1e-5
 
-            render_out = self.renderer.render(rays_o, rays_v, near, far,
-                                              background_rgb=None,
-                                              cos_anneal_ratio=self.get_cos_anneal_ratio())
+            if self.method == 'Traditional':
+                render_out = self.grid_renderer.render(rays_o, rays_v, near, far,
+                                                  background_rgb=None,
+                                                  cos_anneal_ratio=self.get_cos_anneal_ratio())
+            elif self.method == 'Network':
+                render_out = self.renderer.render(rays_o, rays_v, near, far,
+                                                  background_rgb=None,
+                                                  cos_anneal_ratio=self.get_cos_anneal_ratio())
 
             color_fine = render_out['color_fine']
             s_val = render_out['s_val']
@@ -268,9 +298,16 @@ class Render_Fields(torch.nn.Module):
 
             mask_loss = F.binary_cross_entropy(weight_sum.clip(1e-3, 1.0 - 1e-3), mask)
 
-            loss = color_fine_loss +\
-                   eikonal_loss * self.igr_weight +\
-                   mask_loss * self.mask_weight
+
+
+            if self.method == 'Traditional':
+                loss = color_fine_loss + \
+                       eikonal_loss * self.igr_weight + \
+                       mask_loss * self.mask_weight
+            else:
+                loss = color_fine_loss + \
+                       eikonal_loss * self.igr_weight + \
+                       mask_loss * self.mask_weight
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -285,29 +322,35 @@ class Render_Fields(torch.nn.Module):
             # self.writer.add_scalar('Statistics/cdf', (cdf_fine[:, :1] * mask).sum() / mask_sum, self.iter_step)
             # self.writer.add_scalar('Statistics/weight_max', (weight_max * mask).sum() / mask_sum, self.iter_step)
             # self.writer.add_scalar('Statistics/psnr', psnr, self.iter_step)
-            if iter_i%1000==0:
-                self.render_image_Neus(H, W, r_mv, proj_mtx, 1, iter_i)
-            # print(f'{loss.item()},\n')
+            # if self.method == 'Traditional':
+            #     render_out = self.grid_renderer.render(rays_o, rays_v, near, far,
+            #                                       background_rgb=None,
+            #                                       cos_anneal_ratio=self.get_cos_anneal_ratio())
 
-            if self.iter_step % self.report_freq == 0:
-                print(self.base_exp_dir)
-                print('iter:{:8>d} loss = {} lr={}'.format(self.iter_step, loss, self.optimizer.param_groups[0]['lr']))
+            if iter_i%2500==0:
+                self.render_image(H, W, r_mv, proj_mtx, 1, iter_i)
+                # print(f'{loss.item()},\n')
+            if self.iter_step % 200 == 0:
+                print('iter:{:8>d} loss = {}'.format(self.iter_step, loss))
 
-            if self.iter_step % self.save_freq == 0:
-                self.save_checkpoint()
+            if self.method == 'Network':
+                if self.iter_step % self.report_freq == 0:
+                    print(self.base_exp_dir)
+                    print('iter:{:8>d} loss = {} lr={}'.format(self.iter_step, loss, self.optimizer.param_groups[0]['lr']))
 
-            # if self.iter_step % self.val_freq == 0:
-            #     self.validate_image()
+                if self.iter_step % self.save_freq == 0:
+                    self.save_checkpoint()
 
-            # if self.iter_step % self.val_mesh_freq == 0:
-            #     self.validate_mesh()
+                # if self.iter_step % self.val_freq == 0:
+                #     self.validate_image()
 
-            self.update_learning_rate()
+                # if self.iter_step % self.val_mesh_freq == 0:
+                #     self.validate_mesh()
 
-    def ptsd(self):
-        return self.SDF, self.CF
+                self.update_learning_rate()
 
-    def render_image_Neus(self, H, W, mv, p, img_N, iter_i):
+
+    def render_image(self, H, W, mv, p, img_N, iter_i):
         """
         render image with a input campos
         """
@@ -343,26 +386,41 @@ class Render_Fields(torch.nn.Module):
             near, far = near_far_from_sphere(rays_o_batch, rays_d_batch)
             background_rgb = None
 
-            render_out = self.renderer.render(rays_o_batch,
-                                              rays_d_batch,
-                                              near,
-                                              far,
-                                              cos_anneal_ratio=self.get_cos_anneal_ratio(),
-                                              background_rgb=background_rgb)
+            if self.method == 'Traditional':
+                render_out = self.grid_renderer.render(rays_o_batch, rays_d_batch, near, far,
+                                                  background_rgb=None,
+                                                  cos_anneal_ratio=self.get_cos_anneal_ratio())
 
-            def feasible(key):
-                return (key in render_out) and (render_out[key] is not None)
+                def feasible(key):
+                    return (key in render_out) and (render_out[key] is not None)
 
-            if feasible('color_fine'):
-                out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
-            if feasible('gradients') and feasible('weights'):
-                n_samples = self.renderer.n_samples + self.renderer.n_importance
-                normals = render_out['gradients'] * render_out['weights'][:, :n_samples, None]
-                if feasible('inside_sphere'):
-                    normals = normals * render_out['inside_sphere'][..., None]
-                normals = normals.sum(dim=1).detach().cpu().numpy()
-                out_normal_fine.append(normals)
-            del render_out
+                if feasible('color_fine'):
+                    out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
+                del render_out
+            elif self.method == 'Network':
+                render_out = self.renderer.render(rays_o_batch, rays_d_batch, near, far,
+                                                  background_rgb=None,
+                                                  cos_anneal_ratio=self.get_cos_anneal_ratio())
+            # render_out = self.renderer.render(rays_o_batch,
+            #                                   rays_d_batch,
+            #                                   near,
+            #                                   far,
+            #                                   cos_anneal_ratio=self.get_cos_anneal_ratio(),
+            #                                   background_rgb=background_rgb)
+
+                def feasible(key):
+                    return (key in render_out) and (render_out[key] is not None)
+
+                if feasible('color_fine'):
+                    out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
+                if feasible('gradients') and feasible('weights'):
+                    n_samples = self.renderer.n_samples + self.renderer.n_importance
+                    normals = render_out['gradients'] * render_out['weights'][:, :n_samples, None]
+                    if feasible('inside_sphere'):
+                        normals = normals * render_out['inside_sphere'][..., None]
+                    normals = normals.sum(dim=1).detach().cpu().numpy()
+                    out_normal_fine.append(normals)
+                del render_out
 
         img_fine = None
         if len(out_rgb_fine) > 0:
@@ -380,56 +438,8 @@ class Render_Fields(torch.nn.Module):
         loc = self.out_dir + '/images_Field/' + ('train_%06d_%03d.png' % (iter_i, img_N))
         for i in range(img_fine.shape[-1]):
             if len(out_rgb_fine) > 0:
-                cv.imwrite(loc,img_fine[..., i])
-            # if len(out_normal_fine) > 0:
-            #     cv.imwrite(os.path.join(self.base_exp_dir,
-            #                             'normals',
-            #                             '{:0>8d}_{}_{}.png'.format(self.iter_step, i, idx)),
-            #                normal_img[..., i])
+                cv.imwrite(loc, cv.cvtColor(img_fine[..., i], cv.COLOR_RGB2BGR))
 
-
-
-    """
-    This function needs to be updated. 
-    """
-    # def render_image_Neus(self, campos, resolution, resolution_level, i):
-    #     """
-    #     render image with a input campos
-    #     """
-    #     # （cam_o, ray_v, rgb, 1）
-    #     # Batch * 10
-    #     # Batch * 3 predicted rgb
-    #     rays_o, rays_d = gen_rays_from_params(campos,resolution, resolution_level=resolution_level) # need to sample the v on the objects
-    #     H, W, _ = rays_o.shape
-    #     rays_o = rays_o.reshape(-1, 3)
-    #     rays_d = rays_d.reshape(-1, 3)
-    #
-    #     near, far = near_far_from_sphere(rays_o, rays_d)
-    #     background_rgb = torch.zeros([1, 3])
-    #
-    #     render_out = self.renderer.render(rays_o,
-    #                                       rays_d,
-    #                                       near,
-    #                                       far,
-    #                                       cos_anneal_ratio=self.get_cos_anneal_ratio(),
-    #                                       background_rgb=background_rgb)
-    #
-    #     # out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
-    #     # grad+=render_out['gradient_error'].detach()
-    #     # # train_rgb.append(render_out['color_fine'])
-    #     #
-    #     # del render_out
-    #     train_rgb = (render_out['color_fine'].detach().cpu().numpy().reshape([H, W, 3]) * 256).clip(0, 255)
-    #     img_fine = train_rgb.astype(np.uint8)
-    #     train_rgb = torch.from_numpy(train_rgb).cuda().unsqueeze(dim=0)
-    #     # grad_error = torch.mean(grad)
-    #     # train_rgb.requires_grad = True
-    #
-    #     loc = self.out_dir+ '/images_Field/'+('train_%06d.png' % i)
-    #     if i % 1 == 0:
-    #         util.save_image(loc, img_fine)
-    #         # cv.imwrite(loc, img_fine)
-    #     return train_rgb, render_out
 
 
 
@@ -452,8 +462,9 @@ if __name__ == "__main__":
 
     torch.cuda.set_device(args.gpu)
     args.conf = './confs/wmask_f16.conf'
-    args.field_shape = [64, 64, 64]
-    args.method = 'Network'
+    args.field_shape = [1, 4, 64,64,64]
+    # args.method = 'Network'
+    args.method = 'Traditional'
     args.mode = 'train'
     args.case = 'f16'
     args.mesh_dir = 'data/f16/f16.obj'

@@ -253,7 +253,6 @@ class NeRF(nn.Module):
         else:
             assert False
 
-
 class SingleVarianceNetwork(nn.Module):
     def __init__(self, init_val):
         super(SingleVarianceNetwork, self).__init__()
