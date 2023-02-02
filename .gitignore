@@ -1,6 +1,6 @@
-exp/
 data/
 models/
 Result_Grid/
-Result_NeuS
-Result_Nvdiff
+Result_NeuS/
+Result_Nvdiff/
+__pycache__/

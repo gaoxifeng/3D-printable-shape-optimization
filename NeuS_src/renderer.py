@@ -570,3 +570,9 @@ class NeuSRenderer:
             'gradient_error': ret_fine['gradient_error'],
             'inside_sphere': ret_fine['inside_sphere']
         }
+    def extract_geometry(self, bound_min, bound_max, resolution, threshold=0.0):
+        return extract_geometry(bound_min,
+                                bound_max,
+                                resolution=resolution,
+                                threshold=threshold,
+                                query_func=lambda pts: -self.sdf_network.sdf(pts))

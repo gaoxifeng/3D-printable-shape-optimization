@@ -13,6 +13,7 @@ from NeuS_src.renderer import NeuSRenderer
 from Nvdiff_src import util
 from Render_Mesh import Render_Mesh
 from torch.utils.tensorboard import SummaryWriter
+import trimesh
 RADIUS = 3.5
 """
 Modified from the the Render_Fields:
@@ -390,7 +391,32 @@ class Render_Fields(torch.nn.Module):
             #                normal_img[..., i])
 
 
+    """
+    For visualization of learned SDF
+    """
+    def load_checkpoint(self, checkpoint_name):
+        checkpoint = torch.load(os.path.join(self.base_exp_dir, 'checkpoints', checkpoint_name), map_location=self.device)
+        self.nerf_outside.load_state_dict(checkpoint['nerf'])
+        self.sdf_network.load_state_dict(checkpoint['sdf_network_fine'])
+        self.deviation_network.load_state_dict(checkpoint['variance_network_fine'])
+        self.color_network.load_state_dict(checkpoint['color_network_fine'])
+        self.optimizer.load_state_dict(checkpoint['optimizer'])
+        self.iter_step = checkpoint['iter_step']
+    def validate_mesh(self, world_space=False, resolution=64, threshold=0.0):
+        object_bbox_min = np.array([-1.01, -1.01, -1.01, 1.0])
+        object_bbox_max = np.array([1.01, 1.01, 1.01, 1.0])
+        bound_min = torch.tensor(object_bbox_min[:3], dtype=torch.float32)
+        bound_max = torch.tensor(object_bbox_max[:3], dtype=torch.float32)
 
+        vertices, triangles =\
+            self.renderer.extract_geometry(bound_min, bound_max, resolution=resolution, threshold=threshold)
+        os.makedirs(os.path.join(self.base_exp_dir, 'meshes'), exist_ok=True)
+
+        # if world_space:
+        #     vertices = vertices * self.dataset.scale_mats_np[0][0, 0] + self.dataset.scale_mats_np[0][:3, 3][None]
+
+        mesh = trimesh.Trimesh(vertices, triangles)
+        mesh.export(os.path.join(self.base_exp_dir, 'meshes', '{:0>8d}.ply'.format(self.iter_step)))
     """
     This function needs to be updated. 
     """
@@ -461,8 +487,9 @@ if __name__ == "__main__":
     args.mesh_dir = 'data/f16/f16.obj'
     args.out_dir = 'F16_modified'
     runner = Render_Fields(args.mesh_dir, args.out_dir, args.conf, args.field_shape, args.method, args.mode, args.case)
-    runner.train(4, 512)
-
+    # runner.train(4, 512)
+    runner.load_checkpoint('ckpt_270000.pth')
+    runner.validate_mesh(world_space=False, resolution=512, threshold=args.mcube_threshold)
 
 
     # Field_Shape = [10,60, 60, 60]
