@@ -65,7 +65,7 @@ def near_far_from_sphere(rays_o, rays_d):
     return near, far
 
 class Render_Fields(torch.nn.Module):
-    def __init__(self, mesh_dir, out_dir,conf_path, Field_Shape=[64,64,64], Method='Traditional', mode='train', case='CASE_NAME'):
+    def __init__(self, mesh_dir, out_dir,conf_path, Field_Shape=[64,64,64], MTL=None, Method='Traditional', mode='train', case='CASE_NAME'):
         super().__init__()
         self.out_dir = 'Result_NeuS/' + out_dir
         os.makedirs(self.out_dir, exist_ok=True)
@@ -134,7 +134,7 @@ class Render_Fields(torch.nn.Module):
                                          **self.conf['model.neus_renderer'])
 
 
-        self.render_mesh = Render_Mesh(mesh_dir=mesh_dir, out_dir=out_dir)
+        self.render_mesh = Render_Mesh(mesh_dir=mesh_dir, out_dir=out_dir, mtl_override=MTL)
 
 
 
@@ -483,12 +483,14 @@ if __name__ == "__main__":
     args.field_shape = [64, 64, 64]
     args.method = 'Network'
     args.mode = 'train'
-    args.case = 'f16'
-    args.mesh_dir = 'data/f16/f16.obj'
-    args.out_dir = 'F16_modified'
-    runner = Render_Fields(args.mesh_dir, args.out_dir, args.conf, args.field_shape, args.method, args.mode, args.case)
-    # runner.train(4, 512)
-    runner.load_checkpoint('ckpt_270000.pth')
+    args.case = 'cow'
+    args.mesh_dir = 'data/cow2/cow.obj'
+    args.out_dir = 'cow_modified'
+    # args.MTL = './data/bunny/dancer_diffuse.mtl'
+    args.MTL = None
+    runner = Render_Fields(args.mesh_dir, args.out_dir, args.conf, args.field_shape, args.MTL, args.method, args.mode, args.case)
+    runner.train(4, 512)
+    # runner.load_checkpoint('ckpt_270000.pth')
     runner.validate_mesh(world_space=False, resolution=512, threshold=args.mcube_threshold)
 
 

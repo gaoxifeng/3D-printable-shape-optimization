@@ -120,14 +120,16 @@ def load_obj(filename, clear_ks=True, mtl_override=None):
         uber_material, texcoords, tfaces = material.merge_materials(used_materials, texcoords, tfaces, mfaces)
     else:
         uber_material = used_materials[0]
-
+        # uber_material, texcoords, tfaces = material.merge_materials(used_materials, texcoords, tfaces, mfaces)
     vertices = torch.tensor(vertices, dtype=torch.float32, device='cuda')
     texcoords = torch.tensor(texcoords, dtype=torch.float32, device='cuda') if len(texcoords) > 0 else None
     normals = torch.tensor(normals, dtype=torch.float32, device='cuda') if len(normals) > 0 else None
     
     faces = torch.tensor(faces, dtype=torch.int64, device='cuda')
-    tfaces = torch.tensor(tfaces, dtype=torch.int64, device='cuda') if texcoords is not None else None
-    nfaces = torch.tensor(nfaces, dtype=torch.int64, device='cuda') if normals is not None else None
+    # tfaces = torch.tensor(tfaces, dtype=torch.int64, device='cuda') if texcoords is not None else None
+    # nfaces = torch.tensor(nfaces, dtype=torch.int64, device='cuda') if normals is not None else None
+    tfaces = torch.tensor(tfaces, dtype=torch.int64, device='cuda')
+    nfaces = torch.tensor(nfaces, dtype=torch.int64, device='cuda')
 
     # Read weights and bones if available
     try:

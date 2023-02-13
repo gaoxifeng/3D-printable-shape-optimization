@@ -34,6 +34,7 @@ class Texture2D:
             self.data = init[None, ...]
         else:
             self.data = init[None, None, None, :] # Convert constant to 1x1 tensor
+             
 
     # Filtered (trilinear) sample texture at a given location
     def sample(self, texc, texc_deriv, filter_mode='linear-mipmap-linear', data_fmt=torch.float32):
