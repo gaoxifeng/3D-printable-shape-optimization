@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import sklearn.metrics.pairwise as sp
 import scipy.sparse as scisp
 from MMA import mmasub, subsolv
+import mayavi.mlab as mlab
 
 # import dolfin as df
 """
@@ -698,7 +699,13 @@ class TopoOpt():
             # Write iteration history to screen (req. Python 2.6 or newer)
             print("it.: {0} , obj.: {1:.3f} Vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}".format(loop, obj, x.sum() / (
                     nelx * nely * nelz), change, end - start))
+        xPhys1 = xPhys.reshape((nely,nelx,nelz))
+        # xPhys2 = np.where(xPhys1 > 0.8, 1)
+        T = xPhys1
 
+        mlab.clf()
+        mlab.contour3d(T,colormap='binary')
+        mlab.show()
     def MPM(self, K, P):
         pass
         # return u_wst, f_wst
@@ -805,7 +812,7 @@ class TopoOpt_FeniCS():
 
 if __name__ == "__main__":
     TTT = TopoOpt()
-    p = TTT.Opt3D(50, 10, 10, 0.5)
+    p = TTT.Opt3D_NP(50, 10, 10, 0.5)
     # p = TTT.Opt2D(40, 20, 0.5)
     """
     Cupy to PyTorch
