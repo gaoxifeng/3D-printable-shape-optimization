@@ -333,62 +333,62 @@ class Render_Fields(torch.nn.Module):
             campos[b] = np.linalg.inv(r_mv[b])[:3, 3]  # (B,3)
             lightpos[b] = util.cosine_sample(campos[b])  # (B,3)
 
-            img_rgb, mask_rgb = self.render_mesh.render(mvp, campos, lightpos, resolution, iter_i)
+        img_rgb, mask_rgb = self.render_mesh.render(mvp, campos, lightpos, resolution, iter_step)
 
 
-            #####Generate the rays_o, rays_v, masks from different images here
-            rays_o, rays_v, true_rgb, mask = self.gen_rays_training(img_rgb, mask_rgb, r_mv, proj_mtx)
-            del img_rgb, mask_rgb
-            near, far = near_far_from_sphere(rays_o, rays_v)
+        #####Generate the rays_o, rays_v, masks from different images here
+        rays_o, rays_v, true_rgb, mask = self.gen_rays_training(img_rgb, mask_rgb, r_mv, proj_mtx)
+        del img_rgb, mask_rgb
+        near, far = near_far_from_sphere(rays_o, rays_v)
 
-            # true_rgb[:,[0]] = torch.ones_like(true_rgb[:,[0]])
-            # true_rgb[:, [1]] = torch.zeros_like(true_rgb[:, [1]])
-            # true_rgb[:, [2]] = torch.zeros_like(true_rgb[:, [2]])
-            if self.mask_weight > 0.0:
-                mask = (mask > 0.5).float()
-            else:
-                mask = torch.ones_like(mask)
+        # true_rgb[:,[0]] = torch.ones_like(true_rgb[:,[0]])
+        # true_rgb[:, [1]] = torch.zeros_like(true_rgb[:, [1]])
+        # true_rgb[:, [2]] = torch.zeros_like(true_rgb[:, [2]])
+        if self.mask_weight > 0.0:
+            mask = (mask > 0.5).float()
+        else:
+            mask = torch.ones_like(mask)
 
-            mask_sum = mask.sum() + 1e-5
+        mask_sum = mask.sum() + 1e-5
 
-            render_out = self.renderer.render_modified(rays_o, rays_v, near, far,
-                                              background_rgb=None,
-                                              cos_anneal_ratio=self.get_cos_anneal_ratio())
+        render_out = self.renderer.render_modified(rays_o, rays_v, near, far,
+                                          background_rgb=None,
+                                          cos_anneal_ratio=self.get_cos_anneal_ratio())
 
-            color_fine = render_out['color_fine']
-            s_val = render_out['s_val']
-            cdf_fine = render_out['cdf_fine']
-            gradient_error = render_out['gradient_error']
-            weight_max = render_out['weight_max']
-            weight_sum = render_out['weight_sum']
+        color_fine = render_out['color_fine']
+        s_val = render_out['s_val']
+        cdf_fine = render_out['cdf_fine']
+        gradient_error = render_out['gradient_error']
+        weight_max = render_out['weight_max']
+        weight_sum = render_out['weight_sum']
 
-            # Loss
-            color_error = (color_fine - true_rgb) * mask
-            color_fine_loss = F.l1_loss(color_error, torch.zeros_like(color_error), reduction='sum') / mask_sum
-            # psnr = 20.0 * torch.log10(1.0 / (((color_fine - true_rgb)**2 * mask).sum() / (mask_sum * 3.0)).sqrt())
+        # Loss
+        color_error = (color_fine - true_rgb) * mask
+        color_fine_loss = F.l1_loss(color_error, torch.zeros_like(color_error), reduction='sum') / mask_sum
+        # psnr = 20.0 * torch.log10(1.0 / (((color_fine - true_rgb)**2 * mask).sum() / (mask_sum * 3.0)).sqrt())
 
-            eikonal_loss = gradient_error
+        eikonal_loss = gradient_error
 
-            mask_loss = F.binary_cross_entropy(weight_sum.clip(1e-3, 1.0 - 1e-3), mask)
+        mask_loss = F.binary_cross_entropy(weight_sum.clip(1e-3, 1.0 - 1e-3), mask)
 
-            loss = color_fine_loss +\
-                   eikonal_loss * self.igr_weight +\
-                   mask_loss * self.mask_weight
+        loss = color_fine_loss +\
+               eikonal_loss * self.igr_weight +\
+               mask_loss * self.mask_weight
 
-            # self.optimizer.zero_grad()
-            # loss.backward()
-            # self.optimizer.step()
+        # self.optimizer.zero_grad()
+        # loss.backward()
+        # self.optimizer.step()
 
-            if iter_step%2500==0:
-                self.render_image_Neus(H, W, r_mv, proj_mtx, 1, iter_step)
-            # print(f'{loss.item()},\n')
+        # if iter_step%2500==0:
+        #     self.render_image_Neus(H, W, r_mv, proj_mtx, 1, iter_step)
+        # print(f'{loss.item()},\n')
 
-            if self.iter_step % self.report_freq == 0:
-                print(self.base_exp_dir)
-                print('iter:{:8>d} loss = {} lr={}'.format(self.iter_step, loss, self.optimizer.param_groups[0]['lr']))
+        if self.iter_step % self.report_freq == 0:
+            print(self.base_exp_dir)
+            print('iter:{:8>d} loss = {}'.format(self.iter_step, loss))
 
-            if self.iter_step % self.save_freq == 0:
-                self.save_checkpoint()
+        if self.iter_step % self.save_freq == 0:
+            self.save_checkpoint()
 
         return loss
 

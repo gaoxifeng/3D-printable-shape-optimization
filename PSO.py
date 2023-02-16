@@ -6,7 +6,7 @@ import mcubes
 import argparse
 import os
 import logging
-import tqdm
+from tqdm import tqdm
 def extract_fields(bound_min, bound_max, resolution, query_func):
     N = 64
     X = torch.linspace(bound_min[0], bound_max[0], resolution).split(N)
@@ -25,15 +25,11 @@ def extract_fields(bound_min, bound_max, resolution, query_func):
     return u
 
 
-def extract_geometry(bound_min, bound_max, resolution, threshold, query_func):
-    print('threshold: {}'.format(threshold))
-    u = extract_fields(bound_min, bound_max, resolution, query_func)
-    vertices, triangles = mcubes.marching_cubes(u, threshold)
-    b_max_np = bound_max.detach().cpu().numpy()
-    b_min_np = bound_min.detach().cpu().numpy()
 
-    vertices = vertices / (resolution - 1.0) * (b_max_np - b_min_np)[None, :] + b_min_np[None, :]
-    return vertices, triangles
+
+
+
+
 """
 Step 1: Given any input mesh file obj, use NVidiff to prepare its masked rendering images
 
@@ -53,6 +49,8 @@ class ADMM_3DPSO(torch.nn.Module):
         self.Field_R = FieldRender
         self.TOpt = TOptimizer
 
+        self.volfrac = self.TOpt.volfrac
+
         #Is there anything else should I prepare for the Final Optimization precess?
         """
         Prepare two different sets of data:
@@ -64,13 +62,32 @@ class ADMM_3DPSO(torch.nn.Module):
         params_to_train += list(self.Field_R.nerf_outside.parameters())
         params_to_train += list(self.Field_R.sdf_network.parameters())
         params_to_train += list(self.Field_R.deviation_network.parameters())
+        self.learning_rate = self.Field_R.learning_rate
         self.optimizer = torch.optim.Adam(params_to_train, lr=self.learning_rate)
 
-
+        self.optimizer_sdf = torch.optim.Adam(self.Field_R.sdf_network.parameters(), lr=self.learning_rate)
         # Prepare a initial data for the training process of TO
         # and then feed it into the TOpt
         #
-        Pre_Grid = self.Field_R.generate_grid(shape=[x,y,z])
+        # self.Pre_Grid = self.Field_R.generate_grid(shape=[x,y,z]) #Here is generating the Signed Distance Field
+        #Write another function to generate the Grid data for training process
+        object_bbox_min = np.array([-1.01, -1.01, -1.01, 1.0])
+        object_bbox_max = np.array([1.01, 1.01, 1.01, 1.0])
+        bound_min = torch.tensor(object_bbox_min[:3], dtype=torch.float32)
+        bound_max = torch.tensor(object_bbox_max[:3], dtype=torch.float32)
+
+        self.Pre_Grid = extract_fields(bound_min,
+                                bound_max,
+                                resolution=5,
+                                query_func=lambda pts: -self.Field_R.sdf_network.sdf(pts))
+        # self.Pre_Grid = torch.from_numpy(self.Pre_Grid)
+        self.Pre_Grid = torch.tensor(self.Pre_Grid, requires_grad=True).cuda()
+        self.Current_Target = 2 * self.Pre_Grid + 9.96 * self.Pre_Grid ** 2
+        # self.Pre_Grid=torch.nn.Parameter(self.Pre_Grid)
+        # a1 = torch.clone(self.Pre_Grid)
+
+        # params_to_train += list(self.Pre_Grid)
+
 
 
 
@@ -86,23 +103,40 @@ class ADMM_3DPSO(torch.nn.Module):
         for iter_i in tqdm(range(steps)):
             if (iter_i+1) % swap_steps == 0:
                 #We update the TO here
-
-                Updated_Grid = self.TOpt.Opt3D_Grid(Pre_Grid, self.volfrac, p=3, rmin=1.5, maxloop=to_steps) #(dc,dv)
+                #Change Opt3D_Grid into a Network with forward process?
+                Updated_Grid = self.TOpt.Opt3D_Grid(self.Pre_Grid, self.volfrac, p=3, rmin=1.5, maxloop=to_steps) #(dc,dv)
                 #Here x should come from the NeuS model(which is the grid sample or infill sample to be updated)
                 #Write a new function in TopologyOp to take x as input and return updated x after some steps
 
-                update x for TOpt
-                loss = TOpt_Loss
+
+                """
+                Write a testing function to check the speed of forward/backward procedure in NeuS framework for Grid data
+                But here I need to write a new function to connect the NeuS with the Grid I generated to update the paras
+                
+                
+                
+                """
+
+                torch.autograd.set_detect_anomaly(True)
+
+
+                TOpt_Loss = torch.nn.L1Loss()(self.Current_Target, Updated_Grid)
+
+                # update x for TOpt
+                self.optimizer_sdf.zero_grad()
+                TOpt_Loss.backward()
+                self.optimizer_sdf.step()
+                # self.Pre_Grid  = Updated_Grid
             else:
                 #We update the Field here
                 ###Or we just keep the training process inside the NeuS Field Rendering?
                 ##But in this way we cannot connect with the gradient info from TO part
-                Field_Loss = self.Field_R.train_ADMM(4, 512)
+                Field_Loss = self.Field_R.train_ADMM(4, 64, iter_i)
                 loss = Field_Loss
 
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
 
 
 
@@ -114,9 +148,6 @@ class ADMM_3DPSO(torch.nn.Module):
         # self.optimizer.step()
         self.Field_R.validate_mesh(world_space=False, resolution=512, threshold=args.mcube_threshold)
 
-
-
-        return None
 
 
     def Generate_mesh(self, SDF):
@@ -153,12 +184,15 @@ if __name__ == "__main__":
     args.mode = 'train'
     args.case = 'cow'
     args.mesh_dir = 'data/cow2/cow.obj'
-    args.out_dir = 'cow_modified'
+    args.out_dir = 'asd'
     # args.MTL = './data/bunny/dancer_diffuse.mtl'
     args.MTL = None
     Field_runner = Render_Fields(args.mesh_dir, args.out_dir, args.conf, args.field_shape, args.MTL, args.method, args.mode, args.case)
 
+    TOp_runner = TopoOpt(vol=0.5)
 
+    PSO = ADMM_3DPSO(None, Field_runner, TOp_runner)
+    PSO.Alterating_train(2000,1,1)
 
 
 
@@ -176,4 +210,4 @@ if __name__ == "__main__":
 
 
 
-    runner_ADMM = ADMM_3DPSO(Mesh_runner, Field_runner, TO_runner)
+    # runner_ADMM = ADMM_3DPSO(Mesh_runner, Field_runner, TO_runner)

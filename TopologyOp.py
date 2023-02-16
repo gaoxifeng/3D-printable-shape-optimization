@@ -154,9 +154,9 @@ def lk_H8(nu):
 
 
 class TopoOpt():
-    def __init__(self):
-        self.device = 'cpu'
-
+    def __init__(self, vol):
+        # self.device = 'cpu'
+        self.volfrac = vol
         self.asd = 1
 
     def Opt2D(self, nelx, nely, volfrac, p=3, rmin=1.5, filter_m='Density', xsolver='OC'):
@@ -508,7 +508,8 @@ class TopoOpt():
 
     def Opt3D_Grid(self, x, volfrac, p=3, rmin=1.5, maxloop=200):
         original_shape = x.shape
-        nelx, nely, nelz = x.detach().cpu().numpy().shape()
+        a1 = x.clone().detach().cpu().numpy()
+        nelx, nely, nelz = a1.shape
         print("Minimum complicance problem with OC")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
         print(f"Volume fration: {volfrac}, Penalty p: {p}, Fileter radius: {rmin}")
@@ -550,7 +551,7 @@ class TopoOpt():
         # Verified no problem
 
         KE = lk_H8(nu)
-        KE_T = torch.from_numpy(KE)
+        KE_T = torch.from_numpy(KE).float().cuda()
         nodegrd = np.arange((nely + 1) * (nelx + 1)).reshape(nely + 1, nelx + 1, order='F')
         nodeids = nodegrd[:-1, :-1].reshape(-1, 1, order='F')
         nodeidz = np.arange(0, (nelz) * (nely + 1) * (nelx + 1), (nely + 1) * (nelx + 1))
@@ -568,7 +569,7 @@ class TopoOpt():
         a1 = np.kron(np.ones((1, 24)), edofVec.reshape(-1, 1))
         a2 = np.kron(np.ones((nele, 1)), temp_mtix)
         edoMat = np.kron(np.ones((1, 24)), edofVec.reshape(-1, 1)) + np.kron(np.ones((nele, 1)), temp_mtix)
-        edoMat = torch.from_numpy(edoMat)
+        edoMat = torch.from_numpy(edoMat).cuda()
         iK = torch.kron(edoMat, torch.ones((24, 1)))
         iK = torch.flatten(iK)
         jK = torch.kron(edoMat, torch.ones((1, 24)))
@@ -624,8 +625,9 @@ class TopoOpt():
         # Here we only consider infill level only. The grid has shape of 1xNyxNxxNz
         # x = volfrac*torch.ones((1,nely,nelx,nelz))
         # x = volfrac*torch.ones(nely*nelx*nelz)
-        xPhys = torch.clone(x.flatten)
-        xold1 = torch.clone(x.flatten)
+        x = x.flatten()
+        xPhys = torch.clone(x)
+        xold1 = torch.clone(x)
 
         g = 0
         loop = 0
@@ -638,16 +640,15 @@ class TopoOpt():
             start = time.time()
             loop += 1
             # FE-Analysis
-            ssp = torch.from_numpy((KE.reshape(1, -1).T))
+            ssp = torch.from_numpy((KE.reshape(1, -1).T)).cuda()
             sK = (ssp * (E_min + (xPhys) ** p) * (E_max - E_min)).transpose(1, 0).flatten()
             a1 = torch.min(Idx_K)
             K = torch.sparse_coo_tensor(Idx_K, sK, (ndof, ndof))
             K = K.to_dense()
             K = (K + torch.transpose(K, 1, 0)) / 2
-            K1 = K.numpy()
 
             # K = K[freedofs, :][:, freedofs].to_sparse_csc()
-            K = K[freedofs, :][:, freedofs]
+            K = K[freedofs, :][:, freedofs].float()
             # Solve system
             U[freedofs, 0] = torch.linalg.solve(K, F[freedofs, 0])
             # K_batch = K.unsqueeze(dim=0)
@@ -660,8 +661,8 @@ class TopoOpt():
             # U = something already
 
             # objective function and sensitivity analysis
-            part1 = torch.mm(U[edoMat.numpy() - 1].reshape(nelx * nely * nelz, 24), KE_T)
-            part2 = U[edoMat.numpy() - 1].reshape(nelx * nely * nelz, 24)
+            part1 = torch.mm(U[edoMat.cpu().numpy() - 1].reshape(nelx * nely * nelz, 24), KE_T)
+            part2 = U[edoMat.cpu().numpy() - 1].reshape(nelx * nely * nelz, 24)
             ce[:] = torch.sum(part1 * part2, dim=1)
             obj = torch.sum((E_min + xPhys ** p * (E_max - E_min)) * ce)
             dc[:] = (-p * xPhys ** (p - 1) * (E_max - E_min)) * ce
@@ -683,7 +684,7 @@ class TopoOpt():
                                                                                               torch.minimum(x + move,
                                                                                                             x * torch.sqrt(
                                                                                                                 -dc / dv / lmid)))))
-                xPhys[:] = (torch.sparse.mm(H_csc, xnew.reshape(1, -1).T) / Hs)[:, 0]
+                xPhys[:] = (torch.sparse.mm(H_csc, xnew.reshape(1, -1).T.double()) / Hs)[:, 0]
                 if torch.sum(xPhys) > volfrac * nelx * nely * nelz:
                     l1 = lmid
                 else:
