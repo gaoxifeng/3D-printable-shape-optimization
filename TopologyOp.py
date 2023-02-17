@@ -505,136 +505,116 @@ class TopoOpt():
         E_min = torch.tensor(1e-9)
         E_max = torch.tensor(1.0)
 
-        # User-defined load DOFs
-        il = nelx
-        jl = 0
-        kl = np.arange(nelz + 1)
-        il, jl, kl = np.meshgrid(il, jl, kl)
-        loadnid = kl * (nelx + 1) * (nely + 1) + il * (nely + 1) + (nely + 1 - jl)
-        loaddof = 3 * loadnid.flatten() - 1
-
-        # User-defined support fixed DOFs
-        iif = 0
-        jf = np.arange(nely + 1)
-        kf = np.arange(nelz + 1)
-        a, b, c = np.meshgrid(iif, jf, kf)
-        fixednid = c * (nelx + 1) * (nely + 1) + a * (nely + 1) + (nely + 1 - b)
-        fixeddof = np.concatenate((3 * fixednid.flatten(), 3 * fixednid.flatten() - 1, 3 * fixednid.flatten() - 2),
-                                  axis=0) - 1
-
-        # Prepare for the finite element analysis
-        nele = nelx * nely * nelz
+        # dofs
         ndof = 3 * (nelx + 1) * (nely + 1) * (nelz + 1)
 
-        # F = sparse(loaddof, 1, -1, ndof, 1)
-        F = torch.zeros(ndof, 1)
-        # F[:500] = 1
-        F[loaddof - 1, :] = -1
-        U = torch.zeros(ndof, 1)
-        freedofs = np.setdiff1d(np.arange(ndof), fixeddof)
-        # Verified no problem
+        # USER - DEFINED LOAD DOFs
+        kl = np.arange(nelz + 1)
+        loadnid = kl * (nelx + 1) * (nely + 1) + (nely + 1) * (nelx + 1) - 1  # Node IDs
+        loaddof = 3 * loadnid + 1  # DOFs
 
+        # USER - DEFINED SUPPORT FIXED DOFs
+        [jf, kf] = np.meshgrid(np.arange(nely + 1), np.arange(nelz + 1))  # Coordinates
+        fixednid = (kf) * (nely + 1) * (nelx + 1) + jf  # Node IDs
+        fixeddof = np.array([3 * fixednid, 3 * fixednid + 1, 3 * fixednid + 2]).flatten()  # DOFs
+
+        # Allocate design variables (as array), initialize and allocate sens.
+        x = volfrac * torch.ones(nely * nelx * nelz)
+        xold = torch.clone(x)
+        xPhys = torch.clone(x)
+        g = 0  # must be initialized to use the NGuyen/Paulino OC approach
+
+        # FE: Build the index vectors for the for coo matrix format.
         KE = lk_H8(nu)
-        KE_T = torch.from_numpy(KE).float().cuda()
-        nodegrd = np.arange((nely + 1) * (nelx + 1)).reshape(nely + 1, nelx + 1, order='F')
-        nodeids = nodegrd[:-1, :-1].reshape(-1, 1, order='F')
-        nodeidz = np.arange(0, (nelz) * (nely + 1) * (nelx + 1), (nely + 1) * (nelx + 1))
-        nodeids = np.kron(np.ones(nodeidz.shape), nodeids) + np.kron(np.ones(nodeids.shape), nodeidz)
-        edofVec = (3 * (nodeids + 1) + 1).reshape(-1, 1, order='F')
-
-        temp_mtix = np.array(
-            [0, 1, 2, 3 * nely + 3, 3 * nely + 4, 3 * nely + 5, 3 * nely + 0, 3 * nely + 1, 3 * nely + 2, -3, -2, -1
-                , 3 * (nely + 1) * (nelx + 1) + 0, 3 * (nely + 1) * (nelx + 1) + 1, 3 * (nely + 1) * (nelx + 1) + 2
-                , 3 * (nely + 1) * (nelx + 1) + 3 * nely + 3, 3 * (nely + 1) * (nelx + 1) + 3 * nely + 4,
-             3 * (nely + 1) * (nelx + 1) + 3 * nely + 5, 3 * (nely + 1) * (nelx + 1) + 3 * nely + 0,
-             3 * (nely + 1) * (nelx + 1) + 3 * nely + 1, 3 * (nely + 1) * (nelx + 1) + 3 * nely + 2
-                , 3 * (nely + 1) * (nelx + 1) - 3, 3 * (nely + 1) * (nelx + 1) - 2, 3 * (nely + 1) * (nelx + 1) - 1])
-
-        a1 = np.kron(np.ones((1, 24)), edofVec.reshape(-1, 1))
-        a2 = np.kron(np.ones((nele, 1)), temp_mtix)
-        edoMat = np.kron(np.ones((1, 24)), edofVec.reshape(-1, 1)) + np.kron(np.ones((nele, 1)), temp_mtix)
-        edoMat = torch.from_numpy(edoMat).cuda()
-        iK = torch.kron(edoMat, torch.ones((24, 1)))
+        KE_T = torch.from_numpy(KE)
+        edofMat = np.zeros((nelx * nely * nelz, 24), dtype=int)
+        for elz in range(nelz):
+            for elx in range(nelx):
+                for ely in range(nely):
+                    el = ely + (elx * nely) + elz * (nelx * nely)
+                    n1 = elz * (nelx + 1) * (nely + 1) + (nely + 1) * elx + ely
+                    n2 = elz * (nelx + 1) * (nely + 1) + (nely + 1) * (elx + 1) + ely
+                    n3 = (elz + 1) * (nelx + 1) * (nely + 1) + (nely + 1) * elx + ely
+                    n4 = (elz + 1) * (nelx + 1) * (nely + 1) + (nely + 1) * (elx + 1) + ely
+                    edofMat[el, :] = np.array(
+                        [3 * n1 + 3, 3 * n1 + 4, 3 * n1 + 5, 3 * n2 + 3, 3 * n2 + 4, 3 * n2 + 5, \
+                         3 * n2, 3 * n2 + 1, 3 * n2 + 2, 3 * n1, 3 * n1 + 1, 3 * n1 + 2, \
+                         3 * n3 + 3, 3 * n3 + 4, 3 * n3 + 5, 3 * n4 + 3, 3 * n4 + 4, 3 * n4 + 5, \
+                         3 * n4, 3 * n4 + 1, 3 * n4 + 2, 3 * n3, 3 * n3 + 1, 3 * n3 + 2])
+        edofMat = torch.from_numpy(edofMat)
+        iK = torch.kron(edofMat, torch.ones((24, 1)))
         iK = torch.flatten(iK)
-        jK = torch.kron(edoMat, torch.ones((1, 24)))
+        jK = torch.kron(edofMat, torch.ones((1, 24)))
         jK = torch.flatten(jK)
 
         # Prepare the filter
-        nfilter = int(nele * ((2 * (np.ceil(rmin) - 1) + 1) ** 2))
-        # iH = torch.ones(nfilter)
-        # jH = torch.ones(nfilter)
-        # sH = torch.zeros(nfilter)
-        iH = []
-        jH = []
-        sH = []
-        k = 0
-        for k1 in range(1, nelz + 1):
-            for i1 in range(1, nelx + 1):
-                for j1 in range(1, nely + 1):
-                    e1 = (k1 - 1) * nelx * nely + (i1 - 1) * nely + j1
-                    kk1 = int(np.maximum(k1 - (np.ceil(rmin) - 1), 1))
-                    kk2 = int(np.minimum(k1 + np.ceil(rmin) - 1, nelz))
-                    ii1 = int(np.maximum(i1 - (np.ceil(rmin) - 1), 1))
-                    ii2 = int(np.minimum(i1 + np.ceil(rmin) - 1, nelx))
-                    jj1 = int(np.maximum(j1 - (np.ceil(rmin) - 1), 1))
-                    jj2 = int(np.minimum(j1 + np.ceil(rmin) - 1, nely))
-                    for k2 in range(kk1, kk2 + 1):
-                        for i2 in range(ii1, ii2 + 1):
-                            for j2 in range(jj1, jj2 + 1):
-                                e2 = (k2 - 1) * nelx * nely + (i2 - 1) * nely + j2
-                                fac = rmin - np.sqrt(((i1 - i2) ** 2 + (j1 - j2) ** 2 + (k1 - k2) ** 2))
-                                # if k < nfilter:
-                                #     iH[k] = e1
-                                #     jH[k] = e2
-                                #     sH[k] = torch.maximum(torch.tensor(0),torch.tensor(fac))
-                                # else:
-                                #     iH = torch.concat(iH, e1)
-                                #     jH = torch.concat(jH, e2)
-                                #     sH = torch.concat(sH, torch.maximum(torch.tensor(0),torch.tensor(fac)))
-                                iH.append(e1)
-                                jH.append(e2)
-                                sH.append(torch.maximum(torch.tensor(0), torch.tensor(fac)))
-                                k = k + 1
+        nfilter = int(nely * nelx * nelz * ((2 * (np.ceil(rmin) - 1) + 1) ** 2))
+        # Filter: Build (and assemble) the index+data vectors for the coo matrix format
+        nfilter = int(nelx * nely * nelz * ((2 * (np.ceil(rmin) - 1) + 1) ** 3))
+        iH = torch.zeros(nfilter)
+        jH = torch.zeros(nfilter)
+        sH = torch.zeros(nfilter)
+        cc = 0
+        for z in range(nelz):
+            for i in range(nelx):
+                for j in range(nely):
+                    row = i * nely + j + z * (nelx * nely)
+                    kk1 = int(np.maximum(i - (np.ceil(rmin) - 1), 0))
+                    kk2 = int(np.minimum(i + np.ceil(rmin), nelx))
+                    ll1 = int(np.maximum(j - (np.ceil(rmin) - 1), 0))
+                    ll2 = int(np.minimum(j + np.ceil(rmin), nely))
+                    mm1 = int(np.maximum(z - (np.ceil(rmin) - 1), 0))
+                    mm2 = int(np.minimum(z + np.ceil(rmin), nelz))
+                    for m in range(mm1, mm2):
+                        for k in range(kk1, kk2):
+                            for l in range(ll1, ll2):
+                                col = k * nely + l + m * (nelx * nely)
+                                fac = rmin - np.sqrt((i - k) * (i - k) + (j - l) * (j - l) + (z - m) * (z - m))
+                                iH[cc] = row
+                                jH[cc] = col
+                                sH[cc] = torch.maximum(torch.tensor(0), torch.tensor(fac))
+                                cc = cc + 1
         # print(k)
         # Finalize assemble and covert to csc format
         iH = torch.tensor(iH)
         jH = torch.tensor(jH)
         sH = torch.tensor(sH)
         # print(sH[:10])
-        Idx = torch.concat((jH.unsqueeze(1) - 1, iH.unsqueeze(1) - 1), dim=1).T
+        Idx = torch.concat((jH.unsqueeze(1), iH.unsqueeze(1)), dim=1).T
         H = torch.sparse_coo_tensor(Idx, sH, (nely * nelx * nelz, nely * nelx * nelz))
         H_csc = H.to_sparse_csc()
         Hs = torch.sparse.sum(H, [1]).to_dense().reshape(-1, 1)
 
-        # Here we only consider infill level only. The grid has shape of 1xNyxNxxNz
-        # x = volfrac*torch.ones((1,nely,nelx,nelz))
-        # x = volfrac*torch.ones(nely*nelx*nelz)
-        x = x.flatten()
-        xPhys = torch.clone(x)
-        xold1 = torch.clone(x)
-
+        # BC's and support
+        dofs = np.arange(3 * (nelx + 1) * (nely + 1) * (nelz + 1))
+        free = np.setdiff1d(dofs, fixeddof)
+        free = torch.from_numpy(free)
+        # Solution and RHS vectors
+        f = torch.zeros((ndof, 1))
+        u = torch.zeros((ndof, 1))
+        # Set load
+        f[loaddof, 0] = -1
         g = 0
         loop = 0
         change = 1
-        Idx_K = torch.concat((jK.unsqueeze(1) - 1, iK.unsqueeze(1) - 1), dim=1).T
+        Idx_K = torch.concat((jK.unsqueeze(1), iK.unsqueeze(1)), dim=1).T
         dv = torch.ones(nely * nelx * nelz)
         dc = torch.ones(nely * nelx * nelz)
         ce = torch.ones(nely * nelx * nelz)
-        while (change > tolx) and (loop < maxloop):
+        while change > tolx and loop < maxloop:
             start = time.time()
             loop += 1
             # FE-Analysis
-            ssp = torch.from_numpy((KE.reshape(1, -1).T)).cuda()
+            ssp = torch.from_numpy((KE.reshape(1, -1).T))
             sK = (ssp * (E_min + (xPhys) ** p) * (E_max - E_min)).transpose(1, 0).flatten()
             a1 = torch.min(Idx_K)
             K = torch.sparse_coo_tensor(Idx_K, sK, (ndof, ndof))
             K = K.to_dense()
-            K = (K + torch.transpose(K, 1, 0)) / 2
 
             # K = K[freedofs, :][:, freedofs].to_sparse_csc()
-            K = K[freedofs, :][:, freedofs].float()
+            K = K[free, :][:, free]
             # Solve system
-            U[freedofs, 0] = torch.linalg.solve(K, F[freedofs, 0])
+            u[free, 0] = torch.linalg.solve(K, f[free, 0])
             # K_batch = K.unsqueeze(dim=0)
             # u_batch = U.unsqueeze(dim=0)
             # f_batch = F.unsqueeze(dim=0)
@@ -645,51 +625,45 @@ class TopoOpt():
             # U = something already
 
             # objective function and sensitivity analysis
-            part1 = torch.mm(U[edoMat.cpu().numpy() - 1].reshape(nelx * nely * nelz, 24), KE_T)
-            part2 = U[edoMat.cpu().numpy() - 1].reshape(nelx * nely * nelz, 24)
+            part1 = torch.mm(u[edofMat.numpy()].reshape(nelx * nely * nelz, 24), KE_T)
+            part2 = u[edofMat.numpy()].reshape(nelx * nely * nelz, 24)
             ce[:] = torch.sum(part1 * part2, dim=1)
             obj = torch.sum((E_min + xPhys ** p * (E_max - E_min)) * ce)
             dc[:] = (-p * xPhys ** (p - 1) * (E_max - E_min)) * ce
             dv[:] = torch.ones(nely * nelx * nelz)
 
             # Filtering and modification of sensitivities
+
             dc[:] = torch.sparse.mm(H_csc, (dc.reshape(1, -1).T / Hs))[:, 0]
             dv[:] = torch.sparse.mm(H_csc, (dv.reshape(1, -1).T / Hs))[:, 0]
 
+            xold[:] = x[:]
+            (x, g) = oc(nelx, nely, nelz, x, volfrac, dc, dv, g)
             # OC update
-            l1 = 0.5
-            l2 = 1e9
-            move = 0.2
-            # reshape to perform vector operations
-            # xnew = torch.zeros(nelx * nely * nelz)
-            while (l2 - l1) / (l1 + l2) > 1e-3:
-                lmid = 0.5 * (l2 + l1)
-                xnew = torch.maximum(torch.tensor(0.0), torch.maximum(x - move, torch.minimum(torch.tensor(1.0),
-                                                                                              torch.minimum(x + move,
-                                                                                                            x * torch.sqrt(
-                                                                                                                -dc / dv / lmid)))))
-                xPhys[:] = (torch.sparse.mm(H_csc, xnew.reshape(1, -1).T.double()) / Hs)[:, 0]
-                if torch.sum(xPhys) > volfrac * nelx * nely * nelz:
-                    l1 = lmid
-                else:
-                    l2 = lmid
-                # print(l1, l2)
-            x = xnew
-            change = torch.linalg.norm(x.reshape(nelx * nely * nelz, 1) - xold1.reshape(nelx * nely * nelz, 1),
+            xPhys[:] = (torch.sparse.mm(H_csc, x.reshape(1, -1).T) / Hs)[:, 0]
+
+            change = torch.linalg.norm(x.reshape(nelx * nely * nelz, 1) - xold.reshape(nelx * nely * nelz, 1),
                                        ord=float('inf'))
             end = time.time()
             # print('using {}'.format(end - start))
             # Write iteration history to screen (req. Python 2.6 or newer)
             print("it.: {0} , obj.: {1:.3f} Vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}".format(loop, obj, x.sum() / (
-                        nelx * nely * nelz), change, end - start))
+                    nelx * nely * nelz), change, end - start))
         # How to save files?
+        vis=[]
+        M = nelx*nely
+        for i in range(nelz):
+            temp=xPhys[M*i:M*(i+1)].reshape(nelx,nely).T
+            vis.append(temp)
+        a = np.array(vis)
+        x_out = torch.from_numpy(a)
 
         # import mayavi.mlab as mlab
         # mlab.clf()
-        # mlab.contour3d(T)
+        # mlab.contour3d(x_out,colormap='binary')
         # mlab.show()
 
-        return x.reshape(original_shape)
+        return x_out
 
     def Opt3D_NP(self, nelx, nely, nelz, volfrac, p=3, rmin=1.5, maxloop=200, ft=0):
         print("Minimum complicance problem with OC")
@@ -794,6 +768,7 @@ class TopoOpt():
         dc = np.ones(nely * nelx * nelz, dtype=float)
         ce = np.ones(nely * nelx * nelz, dtype=float)
         while change > tolx and loop < maxloop:
+            start = time.time()
             loop = loop + 1
             # Setup and solve FE problem
             sK = ((KE.flatten()[np.newaxis]).T * (Emin + (xPhys) ** p * (Emax - Emin))).flatten(order='F')
@@ -824,13 +799,14 @@ class TopoOpt():
                 xPhys[:] = np.asarray(H * x[np.newaxis].T / Hs)[:, 0]
             # Compute the change by the inf. norm
             change = np.linalg.norm(x.reshape(nelx * nely * nelz, 1) - xold.reshape(nelx * nely * nelz, 1), np.inf)
+            end = time.time()
             # Plot to screen
             '''im.set_array(-xPhys.reshape((nelx, nely, nelz)).T)
             fig.canvas.draw()
             plt.pause(0.01)
             # Write iteration history to screen (req. Python 2.6 or newer)'''
-            print("it.: {0} , obj.: {1:.3f} Vol.: {2:.3f}, ch.: {3:.3f}".format( \
-                loop, obj, (g + volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change))
+            print("it.: {0} , obj.: {1:.3f} Vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}".format( \
+                loop, obj, (g + volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start))
         '''plt.show()'''
         x1 = -xPhys[0:nelx * nely]
         # xPhys1 = xPhys.reshape((nelx,nely,nelz))
