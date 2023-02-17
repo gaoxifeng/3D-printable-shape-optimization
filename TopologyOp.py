@@ -706,206 +706,168 @@ class TopoOpt():
         # mlab.show()
 
         return x.reshape(original_shape)
-    def Opt3D_NP(self, nelx, nely, nelz, volfrac, p=3, rmin=1.5):
+
+    def Opt3D_NP(self, nelx, nely, nelz, volfrac, p=3, rmin=1.5, maxloop=200, ft=0):
         print("Minimum complicance problem with OC")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
         print(f"Volume fration: {volfrac}, Penalty p: {p}, Fileter radius: {rmin}")
-        # print(f"Filter method: {filter_m}")
+        print(f"Filter method: {ft}")
         # print(f"Optimizer: {xsolver}")
-        maxloop = 200
-        tolx = 0.01
+        maxloop = maxloop
+        tolx = 0.005
         displayflag = 0
-        nu = 0.3
-        # max and min stiffness
+        # Max and min stiffness
         Emin = 1e-9
         Emax = 1.0
+        nu = 0.3
 
-        nele = nelx * nely * nelz
-
-        # User-defined load DOFs
-        il = nelx
-        jl = 0
-        kl = np.arange(nelz + 1)
-        il, jl, kl = np.meshgrid(il, jl, kl)
-        loadnid = kl * (nelx + 1) * (nely + 1) + il * (nely + 1) + (nely + 1 - jl)
-        loaddof = 3 * loadnid.flatten() - 1
-
-        # User-defined support fixed DOFs
-        iif = 0
-        jf = np.arange(nely + 1)
-        kf = np.arange(nelz + 1)
-        a, b, c = np.meshgrid(iif, jf, kf)
-        fixednid = c * (nelx + 1) * (nely + 1) + a * (nely + 1) + (nely + 1 - b)
-        fixeddof = np.concatenate((3 * fixednid.flatten(), 3 * fixednid.flatten() - 1, 3 * fixednid.flatten() - 2),
-                                  axis=0) - 1
-
-        # Prepare for the finite element analysis
-        nele = nelx * nely * nelz
+        # dofs
         ndof = 3 * (nelx + 1) * (nely + 1) * (nelz + 1)
 
-        # F = sparse(loaddof, 1, -1, ndof, 1)
-        F = np.zeros((ndof, 1))
-        # F[:500] = 1
-        F[loaddof - 1, :] = -1
-        U = np.zeros((ndof, 1))
-        freedofs = np.setdiff1d(np.arange(ndof), fixeddof)
-        # Verified no problem
+        # USER - DEFINED LOAD DOFs
+        kl = np.arange(nelz + 1)
+        loadnid = kl * (nelx + 1) * (nely + 1) + (nely + 1) * (nelx + 1) - 1  # Node IDs
+        loaddof = 3 * loadnid + 1  # DOFs
 
+        # USER - DEFINED SUPPORT FIXED DOFs
+        [jf, kf] = np.meshgrid(np.arange(nely + 1), np.arange(nelz + 1))  # Coordinates
+        fixednid = (kf) * (nely + 1) * (nelx + 1) + jf  # Node IDs
+        fixeddof = np.array([3 * fixednid, 3 * fixednid + 1, 3 * fixednid + 2]).flatten()  # DOFs
+
+        # Allocate design variables (as array), initialize and allocate sens.
+        x = volfrac * np.ones(nely * nelx * nelz, dtype=float)
+        xold = x.copy()
+        xPhys = x.copy()
+        g = 0  # must be initialized to use the NGuyen/Paulino OC approach
+
+        # FE: Build the index vectors for the for coo matrix format.
         KE = lk_H8(nu)
-        # KE_T = torch.from_numpy(KE)
-        nodegrd = np.arange((nely + 1) * (nelx + 1)).reshape(nely + 1, nelx + 1, order='F')
-        nodeids = nodegrd[:-1, :-1].reshape(-1, 1, order='F')
-        nodeidz = np.arange(0, (nelz) * (nely + 1) * (nelx + 1), (nely + 1) * (nelx + 1))
-        nodeids = np.kron(np.ones(nodeidz.shape), nodeids) + np.kron(np.ones(nodeids.shape), nodeidz)
-        edofVec = (3 * (nodeids + 1) + 1).reshape(-1, 1, order='F')
+        edofMat = np.zeros((nelx * nely * nelz, 24), dtype=int)
+        for elz in range(nelz):
+            for elx in range(nelx):
+                for ely in range(nely):
+                    el = ely + (elx * nely) + elz * (nelx * nely)
+                    n1 = elz * (nelx + 1) * (nely + 1) + (nely + 1) * elx + ely
+                    n2 = elz * (nelx + 1) * (nely + 1) + (nely + 1) * (elx + 1) + ely
+                    n3 = (elz + 1) * (nelx + 1) * (nely + 1) + (nely + 1) * elx + ely
+                    n4 = (elz + 1) * (nelx + 1) * (nely + 1) + (nely + 1) * (elx + 1) + ely
+                    edofMat[el, :] = np.array(
+                        [3 * n1 + 3, 3 * n1 + 4, 3 * n1 + 5, 3 * n2 + 3, 3 * n2 + 4, 3 * n2 + 5, \
+                         3 * n2, 3 * n2 + 1, 3 * n2 + 2, 3 * n1, 3 * n1 + 1, 3 * n1 + 2, \
+                         3 * n3 + 3, 3 * n3 + 4, 3 * n3 + 5, 3 * n4 + 3, 3 * n4 + 4, 3 * n4 + 5, \
+                         3 * n4, 3 * n4 + 1, 3 * n4 + 2, 3 * n3, 3 * n3 + 1, 3 * n3 + 2])
+        # Construct the index pointers for the coo format
+        iK = np.kron(edofMat, np.ones((24, 1))).flatten()
+        jK = np.kron(edofMat, np.ones((1, 24))).flatten()
 
-        temp_mtix = np.array(
-            [0, 1, 2, 3 * nely + 3, 3 * nely + 4, 3 * nely + 5, 3 * nely + 0, 3 * nely + 1, 3 * nely + 2, -3, -2, -1
-                , 3 * (nely + 1) * (nelx + 1) + 0, 3 * (nely + 1) * (nelx + 1) + 1, 3 * (nely + 1) * (nelx + 1) + 2
-                , 3 * (nely + 1) * (nelx + 1) + 3 * nely + 3, 3 * (nely + 1) * (nelx + 1) + 3 * nely + 4,
-             3 * (nely + 1) * (nelx + 1) + 3 * nely + 5, 3 * (nely + 1) * (nelx + 1) + 3 * nely + 0,
-             3 * (nely + 1) * (nelx + 1) + 3 * nely + 1, 3 * (nely + 1) * (nelx + 1) + 3 * nely + 2
-                , 3 * (nely + 1) * (nelx + 1) - 3, 3 * (nely + 1) * (nelx + 1) - 2, 3 * (nely + 1) * (nelx + 1) - 1])
-
-        a1 = np.kron(np.ones((1, 24)), edofVec.reshape(-1, 1))
-        a2 = np.kron(np.ones((nele, 1)), temp_mtix)
-        edoMat = np.kron(np.ones((1, 24)), edofVec.reshape(-1, 1)) + np.kron(np.ones((nele, 1)), temp_mtix)
-        edoMat = edoMat.astype(int)
-        # edoMat = torch.from_numpy(edoMat)
-        iK = np.kron(edoMat, np.ones((24, 1))).flatten() - 1
-        # iK = torch.flatten(iK)
-        jK = np.kron(edoMat, np.ones((1, 24))).flatten() - 1
-        # jK = torch.flatten(jK)
-
-        # Prepare the filter
-        nfilter = int(nele * ((2 * (np.ceil(rmin) - 1) + 1) ** 2))
-        # iH = torch.ones(nfilter)
-        # jH = torch.ones(nfilter)
-        # sH = torch.zeros(nfilter)
-        iH = []
-        jH = []
-        sH = []
-        k = 0
-
-        for k1 in range(1, nelz + 1):
-            for i1 in range(1, nelx + 1):
-                for j1 in range(1, nely + 1):
-                    e1 = (k1 - 1) * nelx * nely + (i1 - 1) * nely + j1
-                    kk1 = int(np.maximum(k1 - (np.ceil(rmin) - 1), 1))
-                    kk2 = int(np.minimum(k1 + np.ceil(rmin) - 1, nelz))
-                    ii1 = int(np.maximum(i1 - (np.ceil(rmin) - 1), 1))
-                    ii2 = int(np.minimum(i1 + np.ceil(rmin) - 1, nelx))
-                    jj1 = int(np.maximum(j1 - (np.ceil(rmin) - 1), 1))
-                    jj2 = int(np.minimum(j1 + np.ceil(rmin) - 1, nely))
-                    for k2 in range(kk1, kk2 + 1):
-                        for i2 in range(ii1, ii2 + 1):
-                            for j2 in range(jj1, jj2 + 1):
-                                e2 = (k2 - 1) * nelx * nely + (i2 - 1) * nely + j2
-                                fac = rmin - np.sqrt(((i1 - i2) ** 2 + (j1 - j2) ** 2 + (k1 - k2) ** 2))
-                                # if k < nfilter:
-                                #     iH[k] = e1
-                                #     jH[k] = e2
-                                #     sH[k] = torch.maximum(torch.tensor(0),torch.tensor(fac))
-                                # else:
-                                #     iH = torch.concat(iH, e1)
-                                #     jH = torch.concat(jH, e2)
-                                #     sH = torch.concat(sH, torch.maximum(torch.tensor(0),torch.tensor(fac)))
-                                iH.append(e1 - 1)
-                                jH.append(e2 - 1)
-                                sH.append(np.maximum(0.0, fac))
-                                k = k + 1
-
+        # Filter: Build (and assemble) the index+data vectors for the coo matrix format
+        nfilter = int(nelx * nely * nelz * ((2 * (np.ceil(rmin) - 1) + 1) ** 3))
+        iH = np.zeros(nfilter)
+        jH = np.zeros(nfilter)
+        sH = np.zeros(nfilter)
+        cc = 0
+        for z in range(nelz):
+            for i in range(nelx):
+                for j in range(nely):
+                    row = i * nely + j + z * (nelx * nely)
+                    kk1 = int(np.maximum(i - (np.ceil(rmin) - 1), 0))
+                    kk2 = int(np.minimum(i + np.ceil(rmin), nelx))
+                    ll1 = int(np.maximum(j - (np.ceil(rmin) - 1), 0))
+                    ll2 = int(np.minimum(j + np.ceil(rmin), nely))
+                    mm1 = int(np.maximum(z - (np.ceil(rmin) - 1), 0))
+                    mm2 = int(np.minimum(z + np.ceil(rmin), nelz))
+                    for m in range(mm1, mm2):
+                        for k in range(kk1, kk2):
+                            for l in range(ll1, ll2):
+                                col = k * nely + l + m * (nelx * nely)
+                                fac = rmin - np.sqrt((i - k) * (i - k) + (j - l) * (j - l) + (z - m) * (z - m))
+                                iH[cc] = row
+                                jH[cc] = col
+                                sH[cc] = np.maximum(0.0, fac)
+                                cc = cc + 1
+        # Finalize assembly and convert to csc format
         H = scisp.coo_matrix((sH, (iH, jH)), shape=(nelx * nely * nelz, nelx * nely * nelz)).tocsc()
         Hs = H.sum(1)
 
-        x = volfrac * np.ones(nely * nelx * nelz)
-        xPhys = x.copy()
-        xold1 = x.copy()
-        # xnew = x.copy()
-        g = 0
+        # BC's and support
+        dofs = np.arange(3 * (nelx + 1) * (nely + 1) * (nelz + 1))
+        free = np.setdiff1d(dofs, fixeddof)
+        # Solution and RHS vectors
+        f = np.zeros((ndof, 1), dtype=float)
+        u = np.zeros((ndof, 1), dtype=float)
+        # Set load
+        f[loaddof, 0] = -1
+        # Initialize plot and plot the initial design
+        '''plt.ion() # Ensure that redrawing is possible
+        fig, ax = plt.subplots()
+        im = ax.imshow(-xPhys.reshape((nelx, nely, nelz)).T, cmap='gray', \
+                   interpolation='none', norm=colors.Normalize(vmin=-1, vmax=0))
+        fig.show()'''
+        # Set loop counter and gradient vectors
         loop = 0
         change = 1
-        # Idx_K = torch.concat((jK.unsqueeze(1) - 1, iK.unsqueeze(1) - 1), dim=1).T
-        dv = np.ones(nely * nelx * nelz)
-        dc = np.ones(nely * nelx * nelz)
-        ce = np.ones(nely * nelx * nelz)
-
-        # MMA
-        # m = 1
-        # xmin = np.zeros((nele,1))
-        # xmax = np.ones((nele,1))
-        # xval = x[np.newaxis].T
-        # xold1 = xval.copy()
-        # xold2 = xval.copy()
-        # low = np.ones((nele,1))
-        # upp = np.ones((nele,1))
-        # a0 = 1.0
-        # a = np.zeros((m,1))
-        # c = 10000*np.ones((m,1))
-        # d = np.zeros((m,1))
-        # move = 0.2
-
-        while (change > tolx) and (loop < maxloop):
-            start = time.time()
-            loop += 1
-
+        dv = np.ones(nely * nelx * nelz, dtype=float)
+        dc = np.ones(nely * nelx * nelz, dtype=float)
+        ce = np.ones(nely * nelx * nelz, dtype=float)
+        while change > tolx and loop < maxloop:
+            loop = loop + 1
+            # Setup and solve FE problem
             sK = ((KE.flatten()[np.newaxis]).T * (Emin + (xPhys) ** p * (Emax - Emin))).flatten(order='F')
             K = scisp.coo_matrix((sK, (iK, jK)), shape=(ndof, ndof)).tocsc()
             # Remove constrained dofs from matrix
-            K = (K + K.getH()) / 2
-            K1 = K[freedofs, :][:, freedofs]
+            K = K[free, :][:, free]
             # Solve system
-            # row = np.array([451,902,1353,1804,2255])
-            # col = np.array([0, 0, 0, 0])
-            # data = np.array([-1, -1, -1, -1])
-            # FF = scisp.coo_matrix((data, (row, col)), shape=(4, 1))
-            # U1 = scisp.linalg.spsolve(K1, F[freedofs, 0])
-            U[freedofs, 0] = scisp.linalg.spsolve(K1, F[freedofs, 0])
-            # U = 0.0001*np.linspace(1,ndof,ndof)
-            pppp = U[edoMat - 1].squeeze()
-            a1 = np.matmul(pppp, KE)
-            a2 = a1 * U[edoMat - 1].squeeze()
-            # objective function and sensitivity analysis
-            ce[:] = (a2).sum(1)
+            u[free, 0] = scisp.linalg.spsolve(K, f[free, 0])
+            # Objective and sensitivity
+            ce[:] = (np.dot(u[edofMat].reshape(nelx * nely * nelz, 24), KE) * u[edofMat].reshape(nelx * nely * nelz,
+                                                                                                 24)).sum(1)
             obj = ((Emin + xPhys ** p * (Emax - Emin)) * ce).sum()
             dc[:] = (-p * xPhys ** (p - 1) * (Emax - Emin)) * ce
             dv[:] = np.ones(nely * nelx * nelz)
-            # Filtering and modification of sensitivities
-            dc[:] = np.asarray(H * (dc[np.newaxis].T / Hs))[:, 0]
-            dv[:] = np.asarray(H * (dv[np.newaxis].T / Hs))[:, 0]
+            # Sensitivity filtering:
+            if ft == 0:
+                dc[:] = np.asarray((H * (x * dc))[np.newaxis].T / Hs)[:, 0] / np.maximum(0.001, x)
+            elif ft == 1:
+                dc[:] = np.asarray(H * (dc[np.newaxis].T / Hs))[:, 0]
+                dv[:] = np.asarray(H * (dv[np.newaxis].T / Hs))[:, 0]
+            # Optimality criteria
+            xold[:] = x
+            (x[:], g) = oc_3_np(nelx, nely, nelz, x, volfrac, dc, dv, g)
+            # Filter design variables
+            if ft == 0:
+                xPhys[:] = x
+            elif ft == 1:
+                xPhys[:] = np.asarray(H * x[np.newaxis].T / Hs)[:, 0]
+            # Compute the change by the inf. norm
+            change = np.linalg.norm(x.reshape(nelx * nely * nelz, 1) - xold.reshape(nelx * nely * nelz, 1), np.inf)
+            # Plot to screen
+            '''im.set_array(-xPhys.reshape((nelx, nely, nelz)).T)
+            fig.canvas.draw()
+            plt.pause(0.01)
+            # Write iteration history to screen (req. Python 2.6 or newer)'''
+            print("it.: {0} , obj.: {1:.3f} Vol.: {2:.3f}, ch.: {3:.3f}".format( \
+                loop, obj, (g + volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change))
+        '''plt.show()'''
+        x1 = -xPhys[0:nelx * nely]
+        # xPhys1 = xPhys.reshape((nelx,nely,nelz))
+        # xPhys2 = xPhys.reshape((nelx,nely,nelz))
 
-            # reshape to perform vector operations
-            # xnew = torch.zeros(nelx * nely * nelz)
-            xold1[:] = x
-            (x[:], xPhys[:]) = oc_np(nelx, nely, nelz, x, volfrac, dc, dv, g, H, Hs)
-
-            # mu0 = 1.0 # Scale factor for objective function
-            # mu1 = 1.0 # Scale factor for volume constraint function
-            # f0val = mu0*obj
-            # df0dx = mu0*dc[np.newaxis].T
-            # fval = mu1*np.array([[xPhys.sum()/nele-volfrac]])
-            # dfdx = mu1*(dv/(nele*volfrac))[np.newaxis]
-            # xval = x.copy()[np.newaxis].T
-            # xmma,ymma,zmma,lam,xsi,eta,mu,zet,s,low,upp = \
-            #     mmasub(m,nele,k,xval,xmin,xmax,xold1,xold2,f0val,df0dx,fval,dfdx,low,upp,a0,a,c,d,move)
-            # xold2 = xold1.copy()
-            # xold1 = xval.copy()
-            # x = xmma.copy().flatten()
-
-            # xPhys[:] = np.asarray(H * x[np.newaxis].T / Hs)[:, 0]
-            change = np.linalg.norm(x.reshape(nelx * nely * nelz, 1) - xold1.reshape(nelx * nely * nelz, 1), np.inf)
-            end = time.time()
-            # print('using {}'.format(end - start))
-            # Write iteration history to screen (req. Python 2.6 or newer)
-            print("it.: {0} , obj.: {1:.3f} Vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}".format(loop, obj, x.sum() / (
-                    nelx * nely * nelz), change, end - start))
-        xPhys1 = xPhys.reshape((nely,nelx,nelz))
         # xPhys2 = np.where(xPhys1 > 0.8, 1)
-        T = xPhys1
+        # T = xPhys1
 
-        mlab.clf()
-        mlab.contour3d(T,colormap='binary')
-        mlab.show()
+        # fig = plt.figure()
+        # ax = fig.add_subplot(111, projection='3d')
+        # scat = ax.scatter(X, Y, Z, c=T,vmin=0, vmax=1,edgecolors='none',marker="s",s=50,depthshade=False)
+        # fig.colorbar(scat, shrink=0.5, aspect=5)
+
+        fig, ax = plt.subplots()
+        im = ax.imshow(x1.reshape((nelx, nely)).T, cmap='gray', \
+                       interpolation='none', norm=colors.Normalize(vmin=-1, vmax=0))
+        plt.show()
+
+        # mlab.clf()
+        # mlab.contour3d(T,colormap='binary')
+        # mlab.show()
     def MPM(self, K, P):
         pass
         # return u_wst, f_wst
