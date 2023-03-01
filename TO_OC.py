@@ -39,29 +39,30 @@ class TopoOpt():
         sol = mg.GridSolverGPU(grid)
         if self.outputDetail:
             print(grid)
-        rho_p = torch.clone(rho)
+        b = f.cuda()
+        if grid.isFree():
+            if self.outputDetail:
+                print("Using free grid!")
+            # in this case, we have to project out the 6 rigid bases
+            b = grid.projectOutBases(b)
+        else:
+            if self.outputDetail:
+                print("Using fixed grid!")
+                    
+        rho_filtered = torch.clone(rho)
         u = torch.zeros((3, nelx + 1, nely + 1, nelz + 1)).cuda()
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
             loop += 1
-            rho1 = (E_min + rho_p ** self.p * (E_max - E_min))
 
             #solve linear system
-            b = f.cuda()
-            if grid.isFree():
-                if self.outputDetail:
-                    print("Using free grid!")
-                # in this case, we have to project out the 6 rigid bases
-                b = grid.projectOutBases(b)
-            else:
-                if self.outputDetail:
-                    print("Using fixed grid!")
             sol.setB(b)
-            sol.solveMGPCG(rho1, u, 1e-8, 1000, True, self.outputDetail)
+            rho_scaled = (E_min + rho_filtered ** self.p * (E_max - E_min))
+            sol.solveMGPCG(rho_scaled, u, 1e-8, 1000, True, self.outputDetail)
             dc = grid.sensitivity(u)
-
-            obj = -torch.sum((E_min + rho_p ** self.p * (E_max - E_min)) * dc)
-            dc = (self.p * rho_p ** (self.p - 1) * (E_max - E_min)) * dc
+            obj = -torch.sum(rho_scaled * dc)
+            dc = (self.p * rho_filtered ** (self.p - 1) * (E_max - E_min)) * dc
+            
             dc = TopoOpt.filter_density(Ker, dc/Ker_S)
             dv = torch.ones((nelx, nely, nelz)).cuda()
             dv = TopoOpt.filter_density(Ker, dv/Ker_S)
@@ -73,7 +74,7 @@ class TopoOpt():
             end = time.time()
             if loop%self.outputInterval == 0:
                 print("it.: {0} , obj.: {1:.3f} Vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}".format(loop, obj, (g + self.volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start))
-            rho_p = TopoOpt.filter_density(Ker, rho/Ker_S)
+            rho_filtered = TopoOpt.filter_density(Ker, rho/Ker_S)
         
         mg.finalizeGPU()
         return rho_old.detach().cpu().numpy()
