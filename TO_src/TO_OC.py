@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import time
 import libMG as mg
+from TO_Layer import TOLayer
 import torch.nn.functional as F
 torch.set_default_dtype(torch.float64)
 
@@ -36,40 +37,25 @@ class TopoOpt():
         g=0
 
         mg.initializeGPU()
-        grid = mg.GridGPU(phiTensor, phiFixedTensor, bb)
-        grid.coarsen(128)
-        grid.setupLinearSystem(lam, mu)
-        sol = mg.GridSolverGPU(grid)
-        if self.outputDetail:
-            print(grid)
-        b = f.cuda()
-        if grid.isFree():
-            if self.outputDetail:
-                print("Using free grid!")
-            # in this case, we have to project out the 6 rigid bases
-            b = grid.projectOutBases(b)
-        else:
-            if self.outputDetail:
-                print("Using fixed grid!")
+        TOLayer.reset(phiTensor, phiFixedTensor, f, bb, lam, mu, self.tolLinear, self.maxloopLinear, self.outputDetail)
                     
+        dv = torch.ones((nelx, nely, nelz)).cuda()
+        dv = TopoOpt.filter_density(Ker, dv/Ker_S)
         u = torch.zeros((3, nelx + 1, nely + 1, nelz + 1)).cuda()
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
             loop += 1
 
             #solve linear system
-            sol.setB(b)
             rho_filtered = TopoOpt.filter_density(Ker, rho/Ker_S)
-            rho_scaled = (E_min + rho_filtered ** self.p * (E_max - E_min))
-            sol.solveMGPCG(rho_scaled, u, self.tolLinear, self.maxloopLinear, True, self.outputDetail)
-            dc = grid.sensitivity(u)
-            obj = -torch.sum(rho_scaled * dc)
+            rho_scaled = (E_min + rho_filtered ** self.p * (E_max - E_min)).detach()
+            rho_scaled.requires_grad_()
+            obj = TOLayer.apply(rho_scaled)
+            obj.backward()
+            dc = rho_scaled.grad
             dc = (self.p * rho_filtered ** (self.p - 1) * (E_max - E_min)) * dc
             dc = TopoOpt.filter_density(Ker, dc/Ker_S)
             
-            dv = torch.ones((nelx, nely, nelz)).cuda()
-            dv = TopoOpt.filter_density(Ker, dv/Ker_S)
-
             rho_old = torch.clone(rho)
             (rho, g) = TopoOpt.oc_grid(nelx, nely, nelz, rho, dc, dv, g, rhoMask)
 
