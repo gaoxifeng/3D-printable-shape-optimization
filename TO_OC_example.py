@@ -1,7 +1,9 @@
-from TO_OC import *
+from TO_OC import TopoOpt
+import torch
 
-def Toy_Example(self,rho):
-    nelx, nely, nelz = rho.clone().detach().cpu().numpy().shape
+def Toy_Example(res=(60,20,4), volfrac=0.3):
+    nelx, nely, nelz = res
+    rho = torch.ones(res).cuda()*volfrac
     phiTensor = -torch.ones_like(rho).cuda()
     phiFixedTensor=torch.ones((nelx + 1, nely + 1, nelz + 1)).cuda()
     phiFixedTensor[0,:,:]=-1
@@ -13,9 +15,9 @@ def Toy_Example(self,rho):
     Targetphi = torch.ones_like(rho)
     lam = 0.3 / 0.52
     mu = 1 / 2.6
-    return phiTensor, phiFixedTensor, f, Nonphi1, Nonphi2, Targetphi, lam, mu
+    return rho, phiTensor, phiFixedTensor, f, Nonphi1, Nonphi2, Targetphi, lam, mu
 
-def Bridge_Example(self,rho):
+def Bridge_Example(res, volfrac):
     nelx, nely, nelz = rho.clone().detach().cpu().numpy().shape
     phiTensor = -torch.ones_like(rho).cuda()
     phiTensor[9:29,44:69,:] = 1
@@ -37,10 +39,14 @@ def Bridge_Example(self,rho):
     return phiTensor, phiFixedTensor, f, Nonphi1, Nonphi2, Targetphi, lam, mu
 
 if __name__ == "__main__":
-    x = 0.15*torch.ones((40,90,360),dtype=torch.float64).cuda()
-    TTT = TopoOpt(0.15)
-    paras = TTT.Bridge_Example(x)
-    p = TTT.Opt3D_Grid_MGGPU(x, paras, 3, 10, 50)
+    params = Toy_Example()
+    sol = TopoOpt(0.3)
+    sol.run(*params)
+    
+    #x = 0.15*torch.ones((40,90,360),dtype=torch.float64).cuda()
+    #TTT = TopoOpt(0.15)
+    #paras = TTT.Bridge_Example(x)
+    #p = TTT.Opt3D_Grid_MGGPU(x, paras, 3, 10, 50)
 
     # bridge = 0.15 * torch.ones((40,90,360),dtype=torch.float64).cuda()
     # p = TTT.Opt3D_Grid_MGGPU_Bridge(bridge, 0.15, 3, 10, 500)
