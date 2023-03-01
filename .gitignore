@@ -1,4 +1,5 @@
 .pvdevproject
+*.pt
 *.user
 *.pyc
 *.vtk
