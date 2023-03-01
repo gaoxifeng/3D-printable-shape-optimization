@@ -37,12 +37,12 @@ class TopoOpt():
         g=0
 
         #compute filtered volume gradient (this is contant so we can precompute)
-        rho=rho.detach()
+        rho = rho.detach()
         rho.requires_grad_()
         rho_filtered = TopoOpt.filter_density(Ker, rho/Ker_S)
         volume = torch.sum(rho_filtered)
         volume.backward()
-        gradVolume = rho.grad.clone()
+        gradVolume = rho.grad.detach()
             
         #initialize torch layer
         mg.initializeGPU()
@@ -57,15 +57,14 @@ class TopoOpt():
             rho_filtered = TopoOpt.filter_density(Ker, rho/Ker_S)
             obj = TOLayer.apply(E_min + rho_filtered ** self.p * (E_max - E_min))
             obj.backward()
-            gradObj = rho.grad
+            gradObj = rho.grad.detach()
             
-            rho_old = torch.clone(rho)
-            (rho, g) = TopoOpt.oc_grid(nelx, nely, nelz, rho, gradObj, gradVolume, g, rhoMask)
-
-            change = torch.linalg.norm(rho.reshape(-1,1) - rho_old.reshape(-1,1), ord=float('inf'))
+            rho_old = rho.clone()
+            rho, g = TopoOpt.oc_grid(rho, gradObj, gradVolume, g, rhoMask)
+            change = torch.linalg.norm(rho.reshape(-1,1) - rho_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
             if loop%self.outputInterval == 0:
-                print("it.: {0} , obj.: {1:.3f} Vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}".format(loop, obj, (g + self.volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start))
+                print("it.: {0} , obj.: {1:.3f} Vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + self.volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
         
         mg.finalizeGPU()
         return rho_old.detach().cpu().numpy()
@@ -90,7 +89,7 @@ class TopoOpt():
         grid_filtered = grid_out.reshape(*grid.shape)
         return grid_filtered
     
-    def oc_grid(nelx, nely, nelz, x, gradObj, gradVolume, g, rhoMask):
+    def oc_grid(x, gradObj, gradVolume, g, rhoMask):
         l1 = 0.0
         l2 = 1e9
         move = 0.2
@@ -98,10 +97,10 @@ class TopoOpt():
         # reshape to perform vector operations
         while (l2 - l1) / (l1 + l2) > 1e-3 and (l1 + l2) > 0:
             lmid = 0.5 * (l2 + l1)
-            Be_eta = torch.maximum( torch.tensor(0.0), torch.div(-gradObj, gradVolume) / lmid ) ** eta
-            xnew = torch.maximum(torch.tensor(0.0), torch.maximum(x - move, torch.minimum(torch.tensor(1.0), torch.minimum(x + move, x * Be_eta))))
+            Be_eta = (torch.maximum( torch.tensor(0.0), torch.div(-gradObj, gradVolume) / lmid ) ** eta).detach()
+            xnew = (torch.maximum(torch.tensor(0.0), torch.maximum(x - move, torch.minimum(torch.tensor(1.0), torch.minimum(x + move, x * Be_eta))))).detach()
             rhoMask(xnew)
-            gt = g + torch.sum((gradVolume * (xnew - x)))
+            gt = g + torch.sum((gradVolume * (xnew - x))).item()
             if gt > 0:
                 l1 = lmid
             else:
