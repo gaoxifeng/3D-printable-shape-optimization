@@ -129,7 +129,7 @@ class TopoOpt():
         #show
         import mcubes,trimesh
         if smooth:
-            mcubes.smooth(xPhysLayered)
-        vertices, triangles = mcubes.marching_cubes(xPhysLayered, iso)
+            xPhys = mcubes.smooth(xPhysLayered)
+        vertices, triangles = mcubes.marching_cubes(xPhys, iso)
         mesh = trimesh.Trimesh(vertices, triangles)
         mesh.show()
