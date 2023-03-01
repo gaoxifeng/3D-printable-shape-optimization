@@ -15,7 +15,7 @@ def Toy_Example(res=(180,60,4), volfrac=0.3):
         pass
     return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
-def Support_Example(res=(128,128,64), volfrac=0.3):
+def Support_Example(res=(128,128,64), volfrac=0.15):
     nelx, nely, nelz = res
     rho = torch.ones(res).cuda()*volfrac
     phiTensor = -torch.ones_like(rho).cuda()
@@ -41,4 +41,4 @@ if __name__ == "__main__":
         rho = sol.run(*params)
         torch.save(rho,"rho.pt")
     else: rho=torch.load("rho.pt")
-    TopoOpt.show(rho, 0.5)
+    TopoOpt.show(rho, 0.99)
