@@ -18,7 +18,7 @@ class TopoOpt():
         self.outputInterval = outputInterval
         self.outputDetail = outputDetail
 
-    def run(self, rho, phiTensor, phiFixedTensor, f, Nonphi1, Nonphi2, Targetphi, lam, mu):
+    def run(self, rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu):
         nelx, nely, nelz = rho.shape
         bb = mg.BBox()
         bb.minC = [-1, -1, -1]
@@ -71,7 +71,7 @@ class TopoOpt():
             dv = TopoOpt.filter_density(Ker, dv/Ker_S)
 
             rho_old = torch.clone(rho)
-            (rho, g) = TopoOpt.oc_grid(nelx, nely, nelz, rho, dc, dv, g, Nonphi1, Nonphi2, Targetphi)
+            (rho, g) = TopoOpt.oc_grid(nelx, nely, nelz, rho, dc, dv, g, rhoMask)
 
             change = torch.linalg.norm(rho.reshape(-1,1) - rho_old.reshape(-1,1), ord=float('inf'))
             end = time.time()
@@ -102,19 +102,18 @@ class TopoOpt():
         grid_filtered = grid_out.reshape(*grid.shape)
         return grid_filtered
     
-    def oc_grid(nelx, nely, nelz, x, dc, dv, g, Nonphi1, Nonphi2, Targetphi):
+    def oc_grid(nelx, nely, nelz, x, dc, dv, g, rhoMask):
         l1 = 0.0
         l2 = 1e9
         move = 0.2
+        eta = 0.5
         # reshape to perform vector operations
         xnew = torch.zeros((nelx, nely, nelz))
-        dc = dc * Nonphi1
-    
         while (l2 - l1) / (l1 + l2) > 1e-3 and (l1 + l2) > 0:
             lmid = 0.5 * (l2 + l1)
-            ppp=torch.div(-dc,dv)/ lmid
-            xnew = torch.maximum(torch.tensor(0.0), torch.maximum(x - move, torch.minimum(torch.tensor(1.0), torch.minimum(x + move, x * torch.sqrt(ppp)))))
-            xnew = xnew * Nonphi1 + Targetphi * Nonphi2
+            Be_eta = ( torch.div(-dc, dv) / lmid ) ** eta
+            xnew = torch.maximum(torch.tensor(0.0), torch.maximum(x - move, torch.minimum(torch.tensor(1.0), torch.minimum(x + move, x * Be_eta))))
+            rhoMask(xnew)
             gt = g + torch.sum((dv * (xnew - x)))
             if gt > 0:
                 l1 = lmid
@@ -125,5 +124,5 @@ class TopoOpt():
     def show(xPhys):
         import mayavi.mlab as mlab
         mlab.clf()
-        mlab.contour3d(xPhys,colormap='binary')
+        mlab.contour3d(xPhys,contours=4,transparent=True)
         mlab.show()
