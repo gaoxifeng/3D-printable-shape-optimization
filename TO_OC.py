@@ -6,13 +6,15 @@ import torch.nn.functional as F
 torch.set_default_dtype(torch.float64)
 
 class TopoOpt():
-    def __init__(self, volfrac, p=3, rmin=1.5, maxloop=200, tolx=1e-3, outputInterval=1, outputDetail=False):
+    def __init__(self, volfrac, p=3, rmin=1.5, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
         # self.device = 'cpu'
         self.volfrac = volfrac
         self.p = p
         self.rmin = rmin
         self.maxloop = maxloop
+        self.maxloopLinear = maxloopLinear
         self.tolx = tolx
+        self.tolLinear = tolLinear
         self.outputInterval = outputInterval
         self.outputDetail = outputDetail
 
@@ -59,7 +61,7 @@ class TopoOpt():
             #solve linear system
             sol.setB(b)
             rho_scaled = (E_min + rho_filtered ** self.p * (E_max - E_min))
-            sol.solveMGPCG(rho_scaled, u, 1e-8, 1000, True, self.outputDetail)
+            sol.solveMGPCG(rho_scaled, u, self.tolLinear, self.maxloopLinear, True, self.outputDetail)
             dc = grid.sensitivity(u)
             obj = -torch.sum(rho_scaled * dc)
             dc = (self.p * rho_filtered ** (self.p - 1) * (E_max - E_min)) * dc

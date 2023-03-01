@@ -40,7 +40,7 @@ def Bridge_Example(res, volfrac):
 
 if __name__ == "__main__":
     params = Toy_Example()
-    sol = TopoOpt(0.3)
+    sol = TopoOpt(0.3, outputDetail=False)
     rho = sol.run(*params)
     TopoOpt.show(rho)
     
