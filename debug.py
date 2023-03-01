@@ -142,121 +142,6 @@ class TopoOpt():
 
         return xPhys
 
-
-    def Opt3D_Grid_MGGPU_Bridge(self, rho, volfrac, p=3, rmin=1.5, maxloop=200):
-        DTYPE = torch.float64
-
-        original_shape = rho.shape
-        a1 = rho.clone().detach().cpu().numpy()
-        nelx, nely, nelz = a1.shape
-
-
-        bb = mg.BBox()
-        bb.minC = [-1, -1, -1]
-        bb.maxC = [1, 1, 1]
-        res = [nelx, nely, nelz]
-
-        Ker, Ker_S = filter(rmin, rho)
-        Ker = Ker.cuda()
-        Ker_S = Ker_S.cuda()
-
-
-        print("Minimum complicance problem with OC")
-        print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
-        print(f"Volume fration: {volfrac}, Penalty p: {p}, Filter radius: {rmin}")
-        maxloop = maxloop
-        tolx = 0.002
-        # max and min stiffness
-        E_min = torch.tensor(1e-9)
-        E_max = torch.tensor(1.0)
-
-        # dofs
-        ndof = 3 * (nelx + 1) * (nely + 1) * (nelz + 1)
-
-        f = torch.zeros((3, nelx + 1, nely + 1, nelz + 1))
-        f[1,9:29,44,:] = -2
-        # u = torch.reshape(u, (3, nelx + 1, nely + 1, nelz + 1))
-        loop = 0
-        g=0
-        change = 1111
-
-
-        mg.initializeGPU()
-
-        phiTensor = -torch.ones_like(rho).cuda()
-        phiTensor[9:29,44:69,:] = 1
-        # phiFixedTensor = construct_fixed(fixednid,nelx,nely,nelz).cuda()
-        phiFixedTensor = torch.ones((nelx + 1, nely + 1, nelz + 1)).cuda()
-        phiFixedTensor[:,0,57:61] = -1
-        phiFixedTensor[:, 0, 297:301] = -1
-        # phiFixedTensor[:, 40:44, :] = -1
-
-        grid = mg.GridGPU(phiTensor, phiFixedTensor, bb)
-        grid.coarsen(128)
-        print(grid)
-        rho[:, 40:44, :]=1
-        rho_p = torch.clone(rho)
-        while change > tolx and loop < maxloop:
-            start = time.time()
-            loop += 1
-            rho1 = (E_min + rho_p ** p * (E_max - E_min))
-            uMGPCG = torch.zeros((3, nelx + 1, nely + 1, nelz + 1)).cuda()
-
-            sol = mg.GridSolverGPU(grid)
-            sol.setupLinearSystem(0.6, 0.4)
-
-            b = f.cuda()
-            if grid.isFree():
-                # print("Testing free grid!")
-                # in this case, we have to project out the 6 rigid bases
-                b = grid.projectOutBases(b)
-            else:
-                print("Testing fixed grid!")
-            print(f'Set up time: {time.time()-start}')
-
-            sol.setB(b)
-            sol.solveMGPCG(rho1, uMGPCG, 1e-8, 1000, True, False)
-            print(f'Solve time: {time.time() - start}')
-            dc = grid.sensitivity(uMGPCG)
-            dc[:, 40:44, :] = 0
-            obj = -torch.sum((E_min + rho_p ** p * (E_max - E_min)) * dc)
-            # dc = (p * rho ** (p - 1) * (E_max - E_min)) * dc
-
-            dc = (p * rho_p ** (p - 1) * (E_max - E_min)) * dc
-
-            dc = filter_density(Ker, dc/Ker_S)
-            # dc = filter_density(Ker, Ker_S, dc*rho) / torch.maximum(torch.tensor(0.001), rho)
-            dv = torch.ones((nelx, nely, nelz)).cuda()
-            dv = filter_density(Ker, dv/Ker_S)
-
-            rho_old = torch.clone(rho)
-            (rho, g) = oc_grid(nelx, nely, nelz, rho, volfrac, dc, dv, g)
-            print(f'update time: {time.time() - start}')
-            rho[:, 40:44, :] = 1
-            change = torch.linalg.norm(rho.reshape(-1,1) - rho_old.reshape(-1,1), ord=float('inf'))
-            end = time.time()
-            print("it.: {0} , obj.: {1:.3f} Vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}".format(loop, obj, (g + volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start))
-            rho_p = filter_density(Ker, rho) / Ker_S
-            rho_p[:, 40:44, :] = 1
-            # rho = filter_density_dcdv(Ker, rho / Ker_S)
-            # a=1
-
-        mg.finalizeGPU()
-        xPhys = rho_old.detach().cpu().numpy()
-
-
-        fig, ax = plt.subplots()
-        im = ax.imshow(-xPhys[:,:,1].T, cmap='gray', \
-                       interpolation='none', norm=colors.Normalize(vmin=-1, vmax=0))
-        plt.show()
-        #
-        import mayavi.mlab as mlab
-        mlab.clf()
-        mlab.contour3d(xPhys,colormap='binary')
-        mlab.show()
-
-        return xPhys
-
     def Toy_Example(self,rho):
         nelx, nely, nelz = rho.clone().detach().cpu().numpy().shape
         phiTensor = -torch.ones_like(rho).cuda()
@@ -301,7 +186,7 @@ if __name__ == "__main__":
     x = 0.15*torch.ones((40,90,360),dtype=torch.float64).cuda()
     TTT = TopoOpt(0.15)
     paras = TTT.Bridge_Example(x)
-    p = TTT.Opt3D_Grid_MGGPU(x, paras, 3, 10, 10)
+    p = TTT.Opt3D_Grid_MGGPU(x, paras, 3, 10, 50)
 
     # bridge = 0.15 * torch.ones((40,90,360),dtype=torch.float64).cuda()
     # p = TTT.Opt3D_Grid_MGGPU_Bridge(bridge, 0.15, 3, 10, 500)
