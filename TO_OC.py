@@ -35,6 +35,7 @@ class TopoOpt():
 
         mg.initializeGPU()
         grid = mg.GridGPU(phiTensor, phiFixedTensor, bb)
+        grid.coarsen(128)
         grid.setupLinearSystem(lam, mu)
         sol = mg.GridSolverGPU(grid)
         if self.outputDetail:
