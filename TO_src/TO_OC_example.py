@@ -22,7 +22,7 @@ if __name__ == "__main__":
         rho = sol.run(*params)
         torch.save(rho,"rho.pt")
     else: rho=torch.load("rho.pt")
-    TopoOpt.show(rho)
+    TopoOpt.show(rho, 0.2)
     
     #x = 0.15*torch.ones((40,90,360),dtype=torch.float64).cuda()
     #TTT = TopoOpt(0.15)
