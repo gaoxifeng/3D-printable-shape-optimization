@@ -6,7 +6,6 @@ import logging
 import mcubes
 from icecream import ic
 
-import cuda_gridsample as cu
 def grid_sample_3d(image, optical):
     N, C, ID, IH, IW = image.shape
     _, D, H, W, _ = optical.shape
