@@ -29,7 +29,7 @@ class TopoOpt():
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
         print(f"Volume fration: {self.volfrac}, Penalty p: {self.p}, Fileter radius: {self.rmin}")
         # max and min stiffness
-        E_min = torch.tensor(1e-9)
+        E_min = torch.tensor(1e-3)
         E_max = torch.tensor(1.0)
         change = self.tolx*2
         loop = 0
@@ -108,7 +108,6 @@ class TopoOpt():
         move = 0.2
         eta = 0.5
         # reshape to perform vector operations
-        xnew = torch.zeros((nelx, nely, nelz))
         while (l2 - l1) / (l1 + l2) > 1e-3 and (l1 + l2) > 0:
             lmid = 0.5 * (l2 + l1)
             Be_eta = ( torch.div(-dc, dv) / lmid ) ** eta
@@ -121,8 +120,16 @@ class TopoOpt():
                 l2 = lmid
         return (xnew, gt)
 
-    def show(xPhys):
-        import mayavi.mlab as mlab
-        mlab.clf()
-        mlab.contour3d(xPhys,contours=4,transparent=True)
-        mlab.show()
+    def show(xPhys, iso=0.5, addLayer=True, smooth=True):
+        #add a layer of zero
+        if addLayer:
+            xPhysLayered = np.zeros((xPhys.shape[0]+2,xPhys.shape[1]+2,xPhys.shape[2]+2))
+            xPhysLayered[1:xPhys.shape[0]+1,1:xPhys.shape[1]+1,1:xPhys.shape[2]+1] = xPhys
+            xPhys = xPhysLayered
+        #show
+        import mcubes,trimesh
+        if smooth:
+            mcubes.smooth(xPhysLayered)
+        vertices, triangles = mcubes.marching_cubes(xPhysLayered, iso)
+        mesh = trimesh.Trimesh(vertices, triangles)
+        mesh.show()

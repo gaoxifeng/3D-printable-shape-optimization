@@ -1,7 +1,7 @@
 from TO_OC import TopoOpt
 import torch,os
 
-def Toy_Example(res=(180,60,32), volfrac=0.3):
+def Toy_Example(res=(180,60,4), volfrac=0.3):
     nelx, nely, nelz = res
     rho = torch.ones(res).cuda()*volfrac
     phiTensor = -torch.ones_like(rho).cuda()
