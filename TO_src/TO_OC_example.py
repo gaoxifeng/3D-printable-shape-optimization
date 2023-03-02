@@ -34,6 +34,47 @@ def Support_Example(res=(128,128,64), volfrac=0.15):
         pass
     return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
+def Bridge_Example(res=(40,90,360), volfrac=0.15):
+    nelx, nely, nelz = res
+    rho = torch.ones(res).cuda()*volfrac
+    # rho = torch.load("rho_bg.pt")
+    # rho = torch.from_numpy(rho).cuda()
+    supp = nelz//6
+    nz = nelz // 90
+
+    load = nelx//4
+
+    non = nely//2
+    ny = nely//20
+
+
+    rho[:, non-ny:non, :] = 1
+    rho[load:nelx-load, non:non+non//2, :] = 0
+
+    phiTensor = -torch.ones_like(rho).cuda()
+    #Non-filled space above the Load surface
+    phiTensor[load:nelx-load, non:non+non//2, :] = 1
+
+    phiFixedTensor=torch.ones((nelx + 1, nely + 1, nelz + 1)).cuda()
+    #Left and Right support
+    phiFixedTensor[:,0,supp:supp+nz] = -1
+    phiFixedTensor[:, 0, nelz+1-supp-nz:nelz+1-supp] = -1
+
+    f = torch.zeros((3, nelx + 1, nely + 1, nelz + 1)).cuda()
+    #Load on non-design surface
+    f[1,load:nelx+1-load,non,:] = -1
+    # print(f[1])
+
+
+
+    lam = 0.6
+    mu = 0.4
+
+    def rhoMask(inputRho):
+        inputRho[:, non-ny:non, :] = 1
+        inputRho[load:nelx-load, non:non+non//2, :] = 0
+    return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
+
 if __name__ == "__main__":
     _, volfrac, params = Support_Example()
     sol = TopoOpt(volfrac, outputDetail=False)
