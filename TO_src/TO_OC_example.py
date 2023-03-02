@@ -34,7 +34,7 @@ def Support_Example(res=(128,128,64), volfrac=0.15):
         pass
     return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
-def Bridge_Example(res=(40,90,360), volfrac=0.15):
+def Bridge_Example(res=(40,90,360), volfrac=0.1):
     nelx, nely, nelz = res
     rho = torch.ones(res).cuda()*volfrac
     # rho = torch.load("rho_bg.pt")
@@ -49,7 +49,6 @@ def Bridge_Example(res=(40,90,360), volfrac=0.15):
     phiTensor = -torch.ones_like(rho).cuda()
     #Non-filled space above the Load surface
     phiTensor[load:nelx-load, non:non+non//2, :] = 1
-
     phiFixedTensor=torch.ones((nelx + 1, nely + 1, nelz + 1)).cuda()
     #Left and Right support
     phiFixedTensor[:,0,supp:supp+nz] = -1

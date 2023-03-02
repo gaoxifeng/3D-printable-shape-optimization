@@ -28,7 +28,7 @@ class TopoOpt():
 
         print("Minimum complicance problem with OC")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
-        print(f"Volume fration: {self.volfrac}, Penalty p: {self.p}, Fileter radius: {self.rmin}")
+        print(f"Volume fration: {self.volfrac}, Penalty p: {self.p}, Filter radius: {self.rmin}")
         # max and min stiffness
         E_min = torch.tensor(1e-3)
         E_max = torch.tensor(1.0)
