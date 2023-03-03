@@ -28,23 +28,7 @@ class WorstCase:
                 print("it.: {0}, ch.: {1:.3f}, time: {2:.3f}, mem: {3:.3f}Gb".format(loop, change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
                 
         return TOLayer.b.detach().cpu().numpy()
-    
-    def showVTK(f):
-        from pyevtk.hl import gridToVTK
-        nx, ny, nz = (f.shape[1]-1, f.shape[2]-1, f.shape[3]-1)
-        x = np.zeros((nx + 1, ny + 1, nz + 1))
-        y = np.zeros((nx + 1, ny + 1, nz + 1))
-        z = np.zeros((nx + 1, ny + 1, nz + 1))
-        a = np.zeros((nx + 1, ny + 1, nz + 1))
-        for k in range(nz + 1):
-            for j in range(ny + 1):
-                for i in range(nx + 1):
-                    x[i,j,k] = i
-                    y[i,j,k] = j
-                    z[i,j,k] = k
-                    a[i,j,k] = np.linalg.norm(f[:,i,j,k])
-        gridToVTK('fWorst',x,y,z,pointData={"magnitude":a})
-                
+      
 def debug(iter=0, DTYPE=torch.float64):
     bb=mg.BBox()
     bb.minC=[-1,-1,-1]
@@ -88,12 +72,14 @@ def debug(iter=0, DTYPE=torch.float64):
     f=torch.rand(tuple([3,res[0]+1,res[1]+1,res[2]+1]),dtype=DTYPE).cuda()
     
     TOLayer.reset(phiTensor, phiFixedTensor, f, bb, 100, 100, 1e-8, output=False)
-    return WorstCase.compute_worst_case(rho)
+    return WorstCase.compute_worst_case(rho), rho.detach().cpu().numpy()
     
 if __name__=='__main__':
     torch.set_default_dtype(torch.float64)
     mg.initializeGPU()
-    f = debug(0)
-    WorstCase.showVTK(f)
+    f, rho = debug(0)
+    from Viewer import *
+    showFMagnitudeVTK("fWorst",f)
+    showRhoVTK("rho",rho)
     debug(1)
     mg.finalizeGPU()

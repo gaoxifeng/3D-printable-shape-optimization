@@ -105,37 +105,3 @@ class TopoOpt():
             else:
                 l2 = lmid
         return (xnew, gt)
-
-    def show(rho, iso=0.5, addLayer=True, smooth=False):
-        #add a layer of zero
-        if addLayer:
-            rhoLayered = np.zeros((rho.shape[0]+2,rho.shape[1]+2,rho.shape[2]+2))
-            rhoLayered[1:rho.shape[0]+1,1:rho.shape[1]+1,1:rho.shape[2]+1] = rho
-            rho = rhoLayered
-        #show
-        import mcubes,trimesh
-        if smooth:
-            rho = mcubes.smooth(rho)
-        vertices, triangles = mcubes.marching_cubes(rho, iso)
-        mesh = trimesh.Trimesh(vertices, triangles)
-        mesh.show()
-        
-    def showVTK(rho, addLayer=True):
-        from pyevtk.hl import gridToVTK
-        #add a layer of zero
-        if addLayer:
-            rhoLayered = np.zeros((rho.shape[0]+2,rho.shape[1]+2,rho.shape[2]+2))
-            rhoLayered[1:rho.shape[0]+1,1:rho.shape[1]+1,1:rho.shape[2]+1] = rho
-            rho = rhoLayered
-            
-        nx, ny, nz = rho.shape
-        x = np.zeros((nx + 1, ny + 1, nz + 1))
-        y = np.zeros((nx + 1, ny + 1, nz + 1))
-        z = np.zeros((nx + 1, ny + 1, nz + 1))
-        for k in range(nz + 1):
-            for j in range(ny + 1):
-                for i in range(nx + 1):
-                    x[i,j,k] = i
-                    y[i,j,k] = j
-                    z[i,j,k] = k
-        gridToVTK('rho',x,y,z,cellData={"magnitude":rho})

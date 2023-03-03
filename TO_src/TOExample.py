@@ -71,5 +71,6 @@ if __name__ == "__main__":
         rho = sol.run(*params)
         torch.save(rho,"rho.pt")
     else: rho=torch.load("rho.pt")
-    TopoOpt.show(rho, 0.99)
-    TopoOpt.showVTK(rho)
+    from Viewer import *
+    showRhoVTK("rho",rho)
+    showRho(rho, 0.99)
