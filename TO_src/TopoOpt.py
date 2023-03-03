@@ -38,7 +38,7 @@ class TopoOpt():
         #compute filtered volume gradient (this is contant so we can precompute)
         rho = rho.detach()
         rho.requires_grad_()
-        rho_filtered = TopoOpt.filter_density(Ker, rho/Ker_S)
+        rho_filtered = TopoOpt.filter_density(Ker, rho)/Ker_S
         volume = torch.sum(rho_filtered)
         volume.backward()
         gradVolume = rho.grad.detach()
@@ -53,7 +53,7 @@ class TopoOpt():
             #compute filtered objective gradient
             rho = rho.detach()
             rho.requires_grad_()
-            rho_filtered = TopoOpt.filter_density(Ker, rho/Ker_S)
+            rho_filtered = TopoOpt.filter_density(Ker, rho)/Ker_S
             obj = TOLayer.apply(E_min + rho_filtered ** self.p * (E_max - E_min))
             obj.backward()
             gradObj = rho.grad.detach()
