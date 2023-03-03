@@ -1,6 +1,5 @@
 import torch
 import numpy as np
-import time
 import libMG as mg
 
 class TOLayer(torch.autograd.Function):
@@ -28,10 +27,7 @@ class TOLayer(torch.autograd.Function):
     
     @staticmethod
     def forward(ctx,rho):
-        TOLayer.sol.setB(TOLayer.b)
-        if TOLayer.grid.isFree():
-            TOLayer.u = TOLayer.grid.projectOutBases(TOLayer.u)
-        TOLayer.u = TOLayer.sol.solveMGPCG(rho, TOLayer.u, TOLayer.tol, TOLayer.maxloop, True, TOLayer.output)
+        TOLayer.solveK(rho)
         dc = TOLayer.grid.sensitivity(TOLayer.u)
         ctx.save_for_backward(dc)
         return -torch.sum(rho * dc)
@@ -41,6 +37,15 @@ class TOLayer(torch.autograd.Function):
         dc=ctx.saved_tensors[0]
         return dc*coef
     
+    @staticmethod
+    def solveK(rho):
+        if TOLayer.grid.isFree():
+            TOLayer.b = TOLayer.grid.projectOutBases(TOLayer.b)
+            TOLayer.u = TOLayer.grid.projectOutBases(TOLayer.u)
+        TOLayer.sol.setB(TOLayer.b)
+        TOLayer.u = TOLayer.sol.solveMGPCG(rho, TOLayer.u, TOLayer.tol, TOLayer.maxloop, True, TOLayer.output)
+        return TOLayer.u
+        
     @staticmethod
     def debug(iter=0, DTYPE=torch.float64):
         bb=mg.BBox()

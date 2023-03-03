@@ -1,4 +1,4 @@
-from TO_OC import TopoOpt
+from TopoOpt import TopoOpt
 import torch,os
 
 def Toy_Example(res=(180,60,4), volfrac=0.3):
@@ -65,10 +65,11 @@ def Bridge_Example(res=(40,90,360), volfrac=0.1):
     return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
 if __name__ == "__main__":
-    _, volfrac, params = Bridge_Example()
+    _, volfrac, params = Toy_Example()
     sol = TopoOpt(volfrac, rmin=2, outputDetail=False)
     if not os.path.exists("rho.pt"):
         rho = sol.run(*params)
         torch.save(rho,"rho.pt")
     else: rho=torch.load("rho.pt")
     TopoOpt.show(rho, 0.99)
+    TopoOpt.showVTK(rho)

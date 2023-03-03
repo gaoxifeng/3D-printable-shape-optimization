@@ -1,8 +1,7 @@
-import torch
+import torch,time
 import numpy as np
-import time
 import libMG as mg
-from TO_Layer import TOLayer
+from TOLayer import TOLayer
 import torch.nn.functional as F
 torch.set_default_dtype(torch.float64)
 
@@ -64,7 +63,7 @@ class TopoOpt():
             change = torch.linalg.norm(rho.reshape(-1,1) - rho_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
             if loop%self.outputInterval == 0:
-                print("it.: {0} , obj.: {1:.3f} Vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + self.volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
+                print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + self.volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
         
         mg.finalizeGPU()
         return rho_old.detach().cpu().numpy()
@@ -107,16 +106,36 @@ class TopoOpt():
                 l2 = lmid
         return (xnew, gt)
 
-    def show(xPhys, iso=0.5, addLayer=True, smooth=False):
+    def show(rho, iso=0.5, addLayer=True, smooth=False):
         #add a layer of zero
         if addLayer:
-            xPhysLayered = np.zeros((xPhys.shape[0]+2,xPhys.shape[1]+2,xPhys.shape[2]+2))
-            xPhysLayered[1:xPhys.shape[0]+1,1:xPhys.shape[1]+1,1:xPhys.shape[2]+1] = xPhys
-            xPhys = xPhysLayered
+            rhoLayered = np.zeros((rho.shape[0]+2,rho.shape[1]+2,rho.shape[2]+2))
+            rhoLayered[1:rho.shape[0]+1,1:rho.shape[1]+1,1:rho.shape[2]+1] = rho
+            rho = rhoLayered
         #show
         import mcubes,trimesh
         if smooth:
-            xPhys = mcubes.smooth(xPhys)
-        vertices, triangles = mcubes.marching_cubes(xPhys, iso)
+            rho = mcubes.smooth(rho)
+        vertices, triangles = mcubes.marching_cubes(rho, iso)
         mesh = trimesh.Trimesh(vertices, triangles)
         mesh.show()
+        
+    def showVTK(rho, addLayer=True):
+        from pyevtk.hl import gridToVTK
+        #add a layer of zero
+        if addLayer:
+            rhoLayered = np.zeros((rho.shape[0]+2,rho.shape[1]+2,rho.shape[2]+2))
+            rhoLayered[1:rho.shape[0]+1,1:rho.shape[1]+1,1:rho.shape[2]+1] = rho
+            rho = rhoLayered
+            
+        nx, ny, nz = rho.shape
+        x = np.zeros((nx + 1, ny + 1, nz + 1))
+        y = np.zeros((nx + 1, ny + 1, nz + 1))
+        z = np.zeros((nx + 1, ny + 1, nz + 1))
+        for k in range(nz + 1):
+            for j in range(ny + 1):
+                for i in range(nx + 1):
+                    x[i,j,k] = i
+                    y[i,j,k] = j
+                    z[i,j,k] = k
+        gridToVTK('rho',x,y,z,cellData={"magnitude":rho})

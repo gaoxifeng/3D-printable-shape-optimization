@@ -3,6 +3,7 @@
 *.user
 *.pyc
 *.vtk
+*.vts
 *.avi
 *.bak
 *.so
