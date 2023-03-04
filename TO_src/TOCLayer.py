@@ -44,6 +44,8 @@ class TOCLayer(torch.autograd.Function):
         TOCLayer.sol.setRho(rho)
         TOCLayer.sol.setBCell(TOCLayer.b)
         TOCLayer.u = TOCLayer.sol.solveMGPCG(TOCLayer.u, TOCLayer.tol, TOCLayer.maxloop, True, TOCLayer.output)
+        if TOCLayer.grid.isFree():
+            TOCLayer.u = TOCLayer.sol.projectOutBases(TOCLayer.u)
         return TOCLayer.u
         
 def debug(iter=0, DTYPE=torch.float64):
