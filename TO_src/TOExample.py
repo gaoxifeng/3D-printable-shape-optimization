@@ -65,7 +65,7 @@ def Bridge_Example(res=(40,90,360), volfrac=0.1):
     return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
 if __name__ == "__main__":
-    _, volfrac, params = Toy_Example()
+    _, volfrac, params = Bridge_Example()
     sol = TopoOpt(volfrac, rmin=2, outputDetail=False)
     if not os.path.exists("rho.pt"):
         rho = sol.run(*params)

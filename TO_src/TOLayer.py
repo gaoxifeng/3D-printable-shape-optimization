@@ -42,8 +42,9 @@ class TOLayer(torch.autograd.Function):
         if TOLayer.grid.isFree():
             TOLayer.b = TOLayer.grid.projectOutBases(TOLayer.b)
             TOLayer.u = TOLayer.grid.projectOutBases(TOLayer.u)
+        TOLayer.sol.setRho(rho)
         TOLayer.sol.setB(TOLayer.b)
-        TOLayer.u = TOLayer.sol.solveMGPCG(rho, TOLayer.u, TOLayer.tol, TOLayer.maxloop, True, TOLayer.output)
+        TOLayer.u = TOLayer.sol.solveMGPCG(TOLayer.u, TOLayer.tol, TOLayer.maxloop, True, TOLayer.output)
         return TOLayer.u
         
 def debug(iter=0, DTYPE=torch.float64):
