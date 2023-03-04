@@ -14,12 +14,12 @@ class TOLayer(torch.autograd.Function):
     def reset(phiTensor, phiFixedTensor, f, bb, lam, mu, tol=1e-2, maxloop=1000, output=True):
         TOLayer.grid = mg.GridGPU(phiTensor, phiFixedTensor, bb)
         TOLayer.grid.coarsen(128)
-        TOLayer.grid.setupLinearSystem(lam, mu)
         TOLayer.sol = mg.GridSolverGPU(TOLayer.grid)
+        TOLayer.sol.setupLinearSystem(lam, mu)
         
         TOLayer.b = f.cuda()
         if TOLayer.grid.isFree():
-            TOLayer.b = TOLayer.grid.projectOutBases(TOLayer.b)
+            TOLayer.b = TOLayer.sol.projectOutBases(TOLayer.b)
         TOLayer.u = torch.zeros(TOLayer.b.shape).cuda()
         TOLayer.tol = tol
         TOLayer.maxloop = maxloop
@@ -28,7 +28,7 @@ class TOLayer(torch.autograd.Function):
     @staticmethod
     def forward(ctx,rho):
         TOLayer.solveK(rho)
-        dc = TOLayer.grid.sensitivity(TOLayer.u)
+        dc = TOLayer.sol.sensitivity(TOLayer.u)
         ctx.save_for_backward(dc)
         return -torch.sum(rho * dc)
         
@@ -40,8 +40,8 @@ class TOLayer(torch.autograd.Function):
     @staticmethod
     def solveK(rho):
         if TOLayer.grid.isFree():
-            TOLayer.b = TOLayer.grid.projectOutBases(TOLayer.b)
-            TOLayer.u = TOLayer.grid.projectOutBases(TOLayer.u)
+            TOLayer.b = TOLayer.sol.projectOutBases(TOLayer.b)
+            TOLayer.u = TOLayer.sol.projectOutBases(TOLayer.u)
         TOLayer.sol.setRho(rho)
         TOLayer.sol.setB(TOLayer.b)
         TOLayer.u = TOLayer.sol.solveMGPCG(TOLayer.u, TOLayer.tol, TOLayer.maxloop, True, TOLayer.output)
