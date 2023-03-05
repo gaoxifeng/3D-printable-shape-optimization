@@ -64,8 +64,9 @@ def debug(iter=0, DTYPE=torch.float64):
             for x in range(res[0]):
                 pos=interpC(x,y,z,bb)
                 phiTensor[x,y,z]=phi(pos)
-                posScaled=pos*np.array([1,2,1])
-                rho[x,y,z]=1 if np.linalg.norm(posScaled)<0.5 else 0.01
+                posl=pos-np.array([0,-0.4,0])
+                posr=pos-np.array([0, 0.4,0])
+                rho[x,y,z]=1 if np.linalg.norm(posl)<0.5 or np.linalg.norm(posr)<0.5 else 0.01
     phiFixedTensor=torch.rand(tuple([res[0]+1,res[1]+1,res[2]+1]),dtype=DTYPE).cuda()
     for z in range(res[2]+1):
         for y in range(res[1]+1):
@@ -82,6 +83,9 @@ if __name__=='__main__':
     f, rho = debug(0)
     from Viewer import *
     showFMagnitudeCellVTK("fWorstCell",f)
+    showFMagnitudeCellVTK("fWorstCellX",f,lambda vec:vec[0])
+    showFMagnitudeCellVTK("fWorstCellY",f,lambda vec:vec[1])
+    showFMagnitudeCellVTK("fWorstCellZ",f,lambda vec:vec[2])
     showRhoVTK("rho",rho)
     debug(1)
     mg.finalizeGPU()
