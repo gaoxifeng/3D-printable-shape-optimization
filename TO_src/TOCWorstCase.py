@@ -22,7 +22,7 @@ class TOCWorseCase:
             
             b_old = TOCLayer.b.clone()
             TOCWorseCase.update_worst_case(rho)
-            change = torch.linalg.norm(TOCLayer.b.reshape(-1,1) - b_old.reshape(-1,1), ord=float('inf')).item()
+            change = torch.linalg.norm(TOCLayer.b.reshape(-1,1) - b_old.reshape(-1,1), ord='fro').item()
             
             end = time.time()
             if loop%outputInterval == 0:

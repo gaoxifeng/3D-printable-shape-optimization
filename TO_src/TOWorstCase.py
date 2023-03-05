@@ -21,7 +21,7 @@ class TOWorstCase:
             
             b_old = TOLayer.b.clone()
             TOWorstCase.update_worst_case(rho)
-            change = torch.linalg.norm(TOLayer.b.reshape(-1,1) - b_old.reshape(-1,1), ord=float('inf')).item()
+            change = torch.linalg.norm(TOLayer.b.reshape(-1,1) - b_old.reshape(-1,1), ord='fro').item()
             
             end = time.time()
             if loop%outputInterval == 0:
