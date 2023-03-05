@@ -47,6 +47,10 @@ class TOCLayer(torch.autograd.Function):
         if TOCLayer.grid.isFree():
             TOCLayer.u = TOCLayer.sol.projectOutBases(TOCLayer.u)
         return TOCLayer.u
+    
+    @staticmethod
+    def vertexToCell(rho): #u->b
+        TOCLayer.sol.vertexToCell(TOCLayer.b,TOCLayer.u,rho)
         
 def debug(iter=0, DTYPE=torch.float64):
     bb=mg.BBox()

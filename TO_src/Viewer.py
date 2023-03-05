@@ -34,7 +34,6 @@ def showRhoVTK(name, rho, addLayer=True):
                 z[i,j,k] = k
     gridToVTK(name,x,y,z,cellData={"magnitude":rho})
     
-
 def showFMagnitudeVTK(name, f):
     from pyevtk.hl import gridToVTK
     nx, ny, nz = (f.shape[1]-1, f.shape[2]-1, f.shape[3]-1)
@@ -50,4 +49,22 @@ def showFMagnitudeVTK(name, f):
                 z[i,j,k] = k
                 a[i,j,k] = np.linalg.norm(f[:,i,j,k])
     gridToVTK(name,x,y,z,pointData={"magnitude":a})
+          
+
+def showFMagnitudeCellVTK(name, f):
+    from pyevtk.hl import gridToVTK
+    nx, ny, nz = (f.shape[1]-1, f.shape[2]-1, f.shape[3]-1)
+    x = np.zeros((nx + 1, ny + 1, nz + 1))
+    y = np.zeros((nx + 1, ny + 1, nz + 1))
+    z = np.zeros((nx + 1, ny + 1, nz + 1))
+    a = np.zeros((nx, ny, nz))
+    for k in range(nz + 1):
+        for j in range(ny + 1):
+            for i in range(nx + 1):
+                x[i,j,k] = i
+                y[i,j,k] = j
+                z[i,j,k] = k
+                if k<nz and j<ny and i<nx:
+                    a[i,j,k] = np.linalg.norm(f[:,i,j,k])
+    gridToVTK(name,x,y,z,cellData={"magnitude":a})
           

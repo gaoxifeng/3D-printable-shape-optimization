@@ -1,17 +1,18 @@
 import torch,time
 import numpy as np
 import libMG as mg
-from TOLayer import TOLayer
+from TOCLayer import TOCLayer
 
-class WorstCase:
+class TOCWorseCase:
     def update_worst_case(rho):
         #inverse power method
-        TOLayer.u = TOLayer.solveK(rho)
-        TOLayer.b = (TOLayer.u / torch.norm(TOLayer.u.reshape(-1))).detach()
-        return TOLayer.b
+        TOCLayer.u = TOCLayer.solveK(rho)
+        TOCLayer.vertexToCell(rho)
+        TOCLayer.b = (TOCLayer.b / torch.norm(TOCLayer.b.reshape(-1))).detach()
+        return TOCLayer.b
         
     def compute_worst_case(rho, eps=1e-2, maxloop=100, outputInterval=1):
-        TOLayer.u = torch.rand(TOLayer.u.shape).cuda()
+        TOCLayer.b = torch.rand(TOCLayer.b.shape).cuda()
         change = eps*2
         loop = 0
         #inverse power loop
@@ -19,15 +20,15 @@ class WorstCase:
             start = time.time()
             loop += 1
             
-            b_old = TOLayer.b.clone()
-            WorstCase.update_worst_case(rho)
-            change = torch.linalg.norm(TOLayer.b.reshape(-1,1) - b_old.reshape(-1,1), ord=float('inf')).item()
+            b_old = TOCLayer.b.clone()
+            TOCWorseCase.update_worst_case(rho)
+            change = torch.linalg.norm(TOCLayer.b.reshape(-1,1) - b_old.reshape(-1,1), ord=float('inf')).item()
             
             end = time.time()
             if loop%outputInterval == 0:
                 print("it.: {0}, ch.: {1:.3f}, time: {2:.3f}, mem: {3:.3f}Gb".format(loop, change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
                 
-        return TOLayer.b.detach().cpu().numpy()
+        return TOCLayer.b.detach().cpu().numpy()
       
 def debug(iter=0, DTYPE=torch.float64):
     bb=mg.BBox()
@@ -69,17 +70,17 @@ def debug(iter=0, DTYPE=torch.float64):
         for y in range(res[1]+1):
             for x in range(res[0]+1):
                 phiFixedTensor[x,y,z]=phiFixed(interpV(x,y,z,bb))
-    f=torch.rand(tuple([3,res[0]+1,res[1]+1,res[2]+1]),dtype=DTYPE).cuda()
-    
-    TOLayer.reset(phiTensor, phiFixedTensor, f, bb, 100, 100, 1e-8, output=False)
-    return WorstCase.compute_worst_case(rho), rho.detach().cpu().numpy()
+    f=torch.rand(tuple([3,res[0],res[1],res[2]]),dtype=DTYPE).cuda()
+
+    TOCLayer.reset(phiTensor, phiFixedTensor, f, bb, 100, 100, 1e-8, output=False)
+    return TOCWorseCase.compute_worst_case(rho), rho.detach().cpu().numpy()
     
 if __name__=='__main__':
     torch.set_default_dtype(torch.float64)
     mg.initializeGPU()
     f, rho = debug(0)
     from Viewer import *
-    showFMagnitudeVTK("fWorst",f)
+    showFMagnitudeCellVTK("fWorstCell",f)
     showRhoVTK("rho",rho)
     debug(1)
     mg.finalizeGPU()
