@@ -64,7 +64,8 @@ def debug(iter=0, DTYPE=torch.float64):
             for x in range(res[0]):
                 pos=interpC(x,y,z,bb)
                 phiTensor[x,y,z]=phi(pos)
-                rho[x,y,z]=1 if np.linalg.norm(pos)<0.5 else 0.01
+                posScaled=pos*np.array([1,2,1])
+                rho[x,y,z]=1 if np.linalg.norm(posScaled)<0.5 else 0.01
     phiFixedTensor=torch.rand(tuple([res[0]+1,res[1]+1,res[2]+1]),dtype=DTYPE).cuda()
     for z in range(res[2]+1):
         for y in range(res[1]+1):
