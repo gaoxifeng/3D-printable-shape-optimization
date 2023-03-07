@@ -21,8 +21,8 @@ class TopoOpt():
     def run(self, rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu):
         nelx, nely, nelz = rho.shape
         bb = mg.BBox()
-        bb.minC = [-1, -1, -1]
-        bb.maxC = [ 1,  1,  1]
+        bb.minC = [0,0,0]
+        bb.maxC = [nelx,nely,nelz]
         Ker, Ker_S = TopoOpt.filter(self.rmin, rho)
 
         print("Minimum complicance problem with OC")
