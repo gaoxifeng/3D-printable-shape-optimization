@@ -85,20 +85,22 @@ class ShapeOpt():
 
     def find_lambda(sdf0, s, eps, gradObj, gradVol, volfrac, CFL, Ker, Ker_S):
         nelx, nely, nelz = sdf0.shape
-        # C = (nelx + 1) * (nely + 1) * (nelz + 1) / torch.sum(gradObj)
+        C = (nelx + 1) * (nely + 1) * (nelz + 1) / torch.sum(gradObj)
         V = nelx * nely * nelz
 
         def compute_volume(lam, sdf0):
             V_N = 1 * gradObj + lam * gradVol
-            sdf = sdf0 - V_N * CFL/torch.max(V_N)
+            # sdf = sdf0 - V_N * CFL/ torch.max(V_N)
+            scale = torch.minimum(V_N / (torch.max(torch.abs(V_N)) + 1e-6), torch.tensor(1.0))
+            sdf = sdf0 -  CFL * scale
             # print(lam, torch.norm(sdf))
             H = ShapeOpt.Heaviside(sdf, eps, s)
             H_filtered = ShapeOpt.filter_density(Ker, H) / Ker_S
-            return sdf, torch.sum(H_filtered).item() / V
+            return sdf, torch.sum(H_filtered).item() / V, V_N, scale
 
         l1 = -1e9
         l2 = 1e9
-        print(f'Max possible volfrac {compute_volume(l1, sdf0)[1]}, Min possible volfrac {compute_volume(l2, sdf0)[1]}.')
+        # print(f'Max possible volfrac {compute_volume(l1, sdf0)[1]}, Min possible volfrac {compute_volume(l2, sdf0)[1]}.')
         # if volfrac > compute_volume(l1,sdf0)[1]:
         #     print(f'Max possible volfrac {compute_volume(l1,sdf0)[1]} is smaller than {volfrac}.')
         #     exit(-1)
@@ -106,13 +108,13 @@ class ShapeOpt():
         while l2-l1>1e-3:
             lmid = 0.5 * (l2 + l1)
             # print(torch.min(sdf0))
-            sdf, vol = compute_volume(lmid, sdf0)
-            # print(torch.min(sdf))
+            sdf, vol, V_N, scale = compute_volume(lmid, sdf0)
+            # print(torch.min(scale), torch.max(scale))
             if vol > volfrac:
                 l1 = lmid
             else:
                 l2 = lmid
-            # print(lmid, vol)
+        print(lmid, vol, torch.norm(V_N))
         return sdf, vol
 
     def Heaviside(sdf, eps, s):
