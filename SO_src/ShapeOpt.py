@@ -44,7 +44,9 @@ class ShapeOpt():
         #Generate a sdf with holes to indicate some parts with negative holes
         #And use viewer to visualize the generated sdf
         sdf = SOLayer.redistance(sdf)
-
+        # from Viewer import showRho
+        # showRho(sdf.detach().cpu().numpy(), 0.00)
+        # change > self.tolx and
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
             loop += 1
@@ -57,8 +59,8 @@ class ShapeOpt():
             vol = torch.sum(H_filtered)
             print(torch.sum(H_filtered).item() / (nelx * nely * nelz))
             vol.backward()
-            gradVol = (self.s * torch.exp(-self.s * sdf) / (1 + torch.exp(-self.s * sdf)) ** 2)
-            # gradVol = sdf.grad.detach()
+            # gradVol = (self.s * torch.exp(-self.s * sdf) / (1 + torch.exp(-self.s * sdf)) ** 2)
+            gradVol = sdf.grad.detach()
 
             # compute filtered objective gradient
             sdf = sdf.detach()
