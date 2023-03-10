@@ -44,6 +44,8 @@ def Toy_Example(res=(180,60,20), volfrac=0.3, r = 5):
     return res, (sdf, phiTensor, phiFixedTensor, f, rhoMask, lam, mu, volfrac)
 
 
+
+
 def Support_Example(res=(128, 128, 64), volfrac=0.15, r=5):
     nelx, nely, nelz = res
     rho = torch.ones(res).cuda() * volfrac
@@ -70,20 +72,58 @@ def Support_Example(res=(128, 128, 64), volfrac=0.15, r=5):
 
 
 
+def Bridge_Example(res=(40,90,360), volfrac=0.1, r = 5):
+    nelx, nely, nelz = res
+    rho = torch.ones(res).cuda()*volfrac
+    # rho = torch.load("rho_bg.pt")
+    # rho = torch.from_numpy(rho).cuda()
+    supp = nelz//6
+    nz = nelz // 90
+    load = nelx//4
+    non = nely//2
+    ny = nely//20
 
+    phiTensor = -torch.ones_like(rho).cuda()
+    #Non-filled space above the Load surface
+    phiTensor[load:nelx-load, non:non+non//2, :] = 1
+    phiFixedTensor=torch.ones((nelx + 1, nely + 1, nelz + 1)).cuda()
+    #Left and Right support
+    phiFixedTensor[:,0,supp:supp+nz] = -1
+    phiFixedTensor[:, 0, nelz+1-supp-nz:nelz+1-supp] = -1
+    f = torch.zeros((3, nelx + 1, nely + 1, nelz + 1)).cuda()
+    #Load on non-design surface
+    f[1,load:nelx+1-load,non,:] = -1
+    # print(f[1])
+    lam = 0.6
+    mu = 0.4
+    def rhoMask(inputRho):
+        inputRho[:, non-ny:non, :] = 0
+        inputRho[:, non-ny+1:non-1, :] = -1
+        inputRho[[0,-1], non - ny:non, :] = 0
+        inputRho[:, non - ny:non, [-1,0]] = 0
+        inputRho[load:nelx-load, non:non+non//2, :] = 1
+
+    sdf = create_bubble_square(res, r)
+    sdf = torch.from_numpy(sdf).cuda()
+    sdf[:, non-ny:non, :] = 0
+    sdf[:, non - ny+1:non-1, :] = -1
+    sdf[[0, -1], non - ny:non, :] = 0
+    sdf[:, non - ny:non, [-1, 0]] = 0
+    sdf[load:nelx-load, non:non+non//2, :] = 1
+    return res, (sdf, phiTensor, phiFixedTensor, f, rhoMask, lam, mu, volfrac)
 
 
 
 
 if __name__ == "__main__":
-    _, params = Support_Example(volfrac=0.3)
-    sol = ShapeOpt(s=1, rmin=2, outputDetail=False, maxloop=200)
-    # if not os.path.exists("rho.pt"):
+    _, params = Bridge_Example(r=5)
+    sol = ShapeOpt(s=1, rmin=3, outputDetail=False, maxloop=200)
+    # # if not os.path.exists("rho.pt"):
     rho = sol.run(*params)
     torch.save(rho, "rho.pt")
     # else:
-    # rho = torch.load("rho_suppCFL4.pt")
+    rho = torch.load("rho.pt")
     from Viewer import *
 
     # showRhoVTK("rho", rho)
-    showRho(rho, -1e-5)
+    showRho(rho,-1e-5)
