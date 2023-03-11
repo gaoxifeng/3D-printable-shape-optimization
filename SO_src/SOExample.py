@@ -101,7 +101,7 @@ def Bridge_Example(res=(40,90,360), volfrac=0.1, r = 5):
         inputRho[:, non-ny+1:non-1, :] = -1
         inputRho[[0,-1], non - ny:non, :] = 0
         inputRho[:, non - ny:non, [-1,0]] = 0
-        inputRho[load:nelx-load, non:non+non//2, :] = 1
+        inputRho[load:nelx-load, non:non+non//2, :] = 100
 
     sdf = create_bubble_square(res, r)
     sdf = torch.from_numpy(sdf).cuda()
@@ -109,7 +109,7 @@ def Bridge_Example(res=(40,90,360), volfrac=0.1, r = 5):
     sdf[:, non - ny+1:non-1, :] = -1
     sdf[[0, -1], non - ny:non, :] = 0
     sdf[:, non - ny:non, [-1, 0]] = 0
-    sdf[load:nelx-load, non:non+non//2, :] = 1
+    sdf[load:nelx-load, non:non+non//2, :] = 100
     return res, (sdf, phiTensor, phiFixedTensor, f, rhoMask, lam, mu, volfrac)
 
 
