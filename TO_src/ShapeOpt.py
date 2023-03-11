@@ -32,7 +32,7 @@ class ShapeOpt():
             for yy in range(y, min(y+blk, nely)):
                 for zz in range(z, min(z+blk, nelz)):
                     dir = np.array([xx-x-blk/2, yy-y-blk/2, zz-z-blk/2])
-                    sdf[xx,yy,zz]=rad-np.linalg.norm(dir)
+                    sdf[xx,yy,zz]=np.linalg.norm(dir)-rad
 
     def create_bubble(sdf, blk, ratio=.7):
         nelx, nely, nelz = sdf.shape
@@ -55,8 +55,7 @@ class ShapeOpt():
         # max and min stiffness
         change = self.tolx * 2
         loop = 0
-        # Prepare the CFL for updating the level set function
-        CFL = 1
+        CFL = 3.
 
         # initialize torch layer
         mg.initializeGPU()
@@ -70,9 +69,8 @@ class ShapeOpt():
             sdf = sdf.detach()
             sdf.requires_grad_()
             H = ShapeOpt.Heaviside(sdf, self.eps, self.s)
-            #H_filtered = TopoOpt.filter_density(Ker, H) / Ker_S
-            #vol = torch.sum(H_filtered)
-            vol = torch.sum(H)
+            H_filtered = TopoOpt.filter_density(Ker, H) / Ker_S
+            vol = torch.sum(H_filtered)
             vol.backward()
             gradVol = sdf.grad.detach()
             
@@ -90,11 +88,10 @@ class ShapeOpt():
             gradObj = sdf.grad.detach()
 
             # Find Lagrange Lambda and update shape
-            H_old = H.clone()
-            sdf, vol = ShapeOpt.oc_grid(sdf, self.s, self.eps, gradObj, gradVol, volTarget, CFL, Ker, Ker_S)
-            sdf = TOLayer.redistance(sdf)
-            H = ShapeOpt.Heaviside(sdf, self.eps, self.s)
-            change = torch.linalg.norm(H.reshape(-1, 1) - H_old.reshape(-1, 1), ord=float('inf')).item()
+            sdf_old = sdf.clone()
+            sdf, _ = ShapeOpt.oc_grid(sdf, self.s, self.eps, gradObj, gradVol, volTarget, CFL, Ker, Ker_S)
+            sdf = TOLayer.redistance(sdf, maxIter=1)
+            change = torch.linalg.norm(sdf.reshape(-1, 1) - sdf_old.reshape(-1, 1), ord=float('inf')).item()
             end = time.time()
             if loop % self.outputInterval == 0:
                 print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".
@@ -103,29 +100,27 @@ class ShapeOpt():
         return sdf.detach().cpu().numpy()
     
     def Heaviside(sdf, eps, s):
-        # phi_s = s*torch.exp(-s*sdf) / (1+torch.exp(-s*sdf))**2
         Phi_s = 1 / (1 + torch.exp(-s * sdf))
         H = (eps + 1) - Phi_s
         return H
     
     def oc_grid(sdf0, s, eps, gradObj, gradVol, volTarget, CFL, Ker, Ker_S):
+        gradObj = torch.minimum(gradObj / (torch.max(torch.abs(gradObj)) + 1e-6), torch.tensor(1.0))
         def compute_volume(lam, sdf0):
-            V_N = (gradObj + lam * gradVol).detach()
-            scale = torch.minimum(V_N / (torch.max(torch.abs(V_N)) + 1e-6), torch.tensor(1.0))
-            sdf = sdf0 - CFL * scale
+            sdf = sdf0 - CFL * gradObj - lam * gradVol
             H = ShapeOpt.Heaviside(sdf, eps, s).detach()
-            #H_filtered = (TopoOpt.filter_density(Ker, H) / Ker_S).detach()
-            #return sdf, torch.sum(H_filtered).item()
-            return sdf, torch.sum(H).item()
+            H_filtered = (TopoOpt.filter_density(Ker, H) / Ker_S).detach()
+            return sdf, torch.sum(H_filtered).item()
 
         l1 = -1e9
         l2 = 1e9
         vol = 0
-        while (l2 - l1) > 1e-3 and abs(vol - volTarget) > 1e-3:
+        while (l2 - l1) > 1e-6 and abs(vol - volTarget) > 1e-3:
             lmid = 0.5 * (l2 + l1)
             sdf, vol = compute_volume(lmid, sdf0)
             if vol > volTarget:
                 l1 = lmid
             else:
                 l2 = lmid
+        #print(vol, volTarget)
         return sdf, vol

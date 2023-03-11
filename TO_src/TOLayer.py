@@ -50,8 +50,8 @@ class TOLayer(torch.autograd.Function):
         return TOLayer.u
     
     @staticmethod
-    def redistance(rho):
-        return TOLayer.sol.reinitialize(rho, 1e-3, 1000, False)
+    def redistance(rho, eps=1e-3, maxIter=1000, output=False):
+        return TOLayer.sol.reinitialize(rho, eps, maxIter, output)
         
 def debug(iter=0, DTYPE=torch.float64):
     bb=mg.BBox()

@@ -14,6 +14,21 @@ def showRho(rho, iso=0.5, addLayer=True, smooth=False):
     mesh = trimesh.Trimesh(vertices, triangles)
     mesh.show()
     
+def showSdf(sdf, iso=0, addLayer=True, smooth=False):
+    #add a layer of zero
+    if addLayer:
+        sdfLayered = -np.ones((sdf.shape[0]+2,sdf.shape[1]+2,sdf.shape[2]+2))
+        sdfLayered[1:sdf.shape[0]+1,1:sdf.shape[1]+1,1:sdf.shape[2]+1] = -sdf
+        sdf = sdfLayered
+    else: sdf = -sdf
+    #show
+    import mcubes,trimesh
+    if smooth:
+        sdf = mcubes.smooth(sdf)
+    vertices, triangles = mcubes.marching_cubes(sdf, iso)
+    mesh = trimesh.Trimesh(vertices, triangles)
+    mesh.show()
+    
 def showRhoVTK(name, rho, addLayer=True):
     from pyevtk.hl import gridToVTK
     #add a layer of zero
