@@ -20,13 +20,13 @@ def Support_Example(res=(128, 128, 64), volfrac=0.15, r=5):
     mu = 1 / 2.6
     def rhoMask(inputRho):
         pass
-    sdf = ShapeOpt.create_bubble(np.zeros(res,dtype=np.float64), min(res)//2, .8)
+    sdf = ShapeOpt.create_bubble(np.zeros(res,dtype=np.float64), min(res)//2, .4, cube=True)
     sdf = torch.from_numpy(sdf).cuda()
     return res, (sdf, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
 if __name__ == "__main__":
     _, params = Support_Example(r=5)
-    sol = ShapeOpt(s=0.5, outputDetail=False)
+    sol = ShapeOpt(outputDetail=False)
     if not os.path.exists("sdf.pt"):
         sdf = sol.run(*params)
         torch.save(sdf,"sdf.pt")
