@@ -7,7 +7,7 @@ torch.set_default_dtype(torch.float64)
 from Viewer import *
 
 class ShapeOpt():
-    def __init__(self, *, limit=1.5, tau=.01, eps_Heaviside=1e-4, maxloop=200, maxloopLinear=1000, CFL=.2, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
+    def __init__(self, *, limit=1.5, tau=.1, eps_Heaviside=1e-3, maxloop=200, maxloopLinear=1000, CFL=1., tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
         # self.device = 'cpu'
         self.limit = limit
         self.tau = tau
@@ -103,22 +103,13 @@ class ShapeOpt():
         return sdf.detach().cpu().numpy()
     
     def Dirichlet(sdf):
-        L = sdf[1,:,:]-sdf[0,:,:]
-        R = sdf[-1,:,:]-sdf[-2,:,:]
-        M = (sdf[2:,:,:]-sdf[:-2,:,:])/2
-        DX = torch.cat((L.unsqueeze(0),M,R.unsqueeze(0)),dim=0)
+        DX = sdf[1:,:,:]-sdf[:-1,:,:]
         ret = torch.dot(DX.reshape(-1),DX.reshape(-1))
         
-        L = sdf[:,1,:]-sdf[:,0,:]
-        R = sdf[:,-1,:]-sdf[:,-2,:]
-        M = (sdf[:,2:,:]-sdf[:,:-2,:])/2
-        DY = torch.cat((L.unsqueeze(1),M,R.unsqueeze(1)),dim=1)
+        DY = sdf[:,1:,:]-sdf[:,:-1,:]
         ret += torch.dot(DY.reshape(-1),DY.reshape(-1))
         
-        L = sdf[:,:,1]-sdf[:,:,0]
-        R = sdf[:,:,-1]-sdf[:,:,-2]
-        M = (sdf[:,:,2:]-sdf[:,:,:-2])/2
-        DZ = torch.cat((L.unsqueeze(2),M,R.unsqueeze(2)),dim=2)
+        DZ = sdf[:,:,1:]-sdf[:,:,:-1]
         ret += torch.dot(DZ.reshape(-1),DZ.reshape(-1))
         return ret
     
@@ -128,7 +119,7 @@ class ShapeOpt():
         return eps + X_s
     
     def clamp(sdf, limit):
-        return torch.maximum(torch.tensor(-limit), torch.minimum(torch.tensor(limit), sdf)).detach()
+        return torch.maximum(torch.tensor(-limit), torch.minimum(torch.tensor(limit), sdf))
     
     def oc_grid(sdf0, limit, gradObj, gradVol, volTarget, CFL):
         l1 = -1e9
@@ -138,7 +129,7 @@ class ShapeOpt():
         while (l2 - l1) > 1e-6 and abs(vol - volTarget) > 1e-3:
             lmid = 0.5 * (l2 + l1)
             sdf = (sdf0 - CFL * gradObj - lmid * gradVol).detach()
-            sdf = ShapeOpt.clamp(sdf, limit)
+            sdf = ShapeOpt.clamp(sdf, limit).detach()
             vol = torch.sum(ShapeOpt.Heaviside(sdf, 0., limit)).item()
             if vol > volTarget:
                 l1 = lmid
