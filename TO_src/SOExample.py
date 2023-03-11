@@ -26,7 +26,7 @@ def Support_Example(res=(128, 128, 64), volfrac=0.15, r=5):
 
 if __name__ == "__main__":
     _, params = Support_Example(r=5)
-    sol = ShapeOpt(s=0.1, rmin=3, outputDetail=False, maxloop=200)
+    sol = ShapeOpt(s=0.5, outputDetail=False)
     if not os.path.exists("sdf.pt"):
         sdf = sol.run(*params)
         torch.save(sdf,"sdf.pt")

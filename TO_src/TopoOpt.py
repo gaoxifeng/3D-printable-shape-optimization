@@ -6,7 +6,7 @@ import torch.nn.functional as F
 torch.set_default_dtype(torch.float64)
 
 class TopoOpt():
-    def __init__(self, volfrac, p=3, rmin=5, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
+    def __init__(self, *, volfrac, p=3, rmin=5, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
         # self.device = 'cpu'
         self.volfrac = volfrac
         self.p = p
