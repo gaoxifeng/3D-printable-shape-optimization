@@ -21,35 +21,20 @@ Nx = [diff(n,xyz[0]) for n in N]
 Ny = [diff(n,xyz[1]) for n in N]
 Nz = [diff(n,xyz[1]) for n in N]
 
-def NNe(i,j):
-    a = N[i]*N[j]
+def NNe(a,i,j):
     ax = integrate(a,xyz[0]).subs(xyz[0],1)-integrate(a,xyz[0]).subs(xyz[0],0)
     axy = integrate(ax,xyz[1]).subs(xyz[1],1)-integrate(ax,xyz[1]).subs(xyz[1],0)
     axyz = integrate(axy,xyz[2]).subs(xyz[2],1)-integrate(axy,xyz[2]).subs(xyz[2],0)
     return axyz
 
 def difNNe(i,j):
-    a = Nx[i]*Nx[j]
-    ax = integrate(a,xyz[0]).subs(xyz[0],1)-integrate(a,xyz[0]).subs(xyz[0],0)
-    axy = integrate(ax,xyz[1]).subs(xyz[1],1)-integrate(ax,xyz[1]).subs(xyz[1],0)
-    axyz1 = integrate(axy,xyz[2]).subs(xyz[2],1)-integrate(axy,xyz[2]).subs(xyz[2],0)
-    
-    a = Ny[i]*Ny[j]
-    ax = integrate(a,xyz[0]).subs(xyz[0],1)-integrate(a,xyz[0]).subs(xyz[0],0)
-    axy = integrate(ax,xyz[1]).subs(xyz[1],1)-integrate(ax,xyz[1]).subs(xyz[1],0)
-    axyz2 = integrate(axy,xyz[2]).subs(xyz[2],1)-integrate(axy,xyz[2]).subs(xyz[2],0)
-    
-    a = Nz[i]*Nz[j]
-    ax = integrate(a,xyz[0]).subs(xyz[0],1)-integrate(a,xyz[0]).subs(xyz[0],0)
-    axy = integrate(ax,xyz[1]).subs(xyz[1],1)-integrate(ax,xyz[1]).subs(xyz[1],0)
-    axyz3 = integrate(axy,xyz[2]).subs(xyz[2],1)-integrate(axy,xyz[2]).subs(xyz[2],0)
-    return axyz1 + axyz2 + axyz3
+    return NNe(Nx[i]*Nx[j],i,j)+NNe(Ny[i]*Ny[j],i,j)+NNe(Nz[i]*Nz[j],i,j)
 
 def NN():
     NNMat = eye(8)
     for i in range(8):
         for j in range(8):
-            NNMat[i,j]=NNe(i,j)
+            NNMat[i,j]=NNe(N[i]*N[j],i,j)
     return NNMat
 
 def difNN():

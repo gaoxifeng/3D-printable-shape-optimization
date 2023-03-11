@@ -17,27 +17,19 @@ N = [coeff(vxy,v,vss) for v in vss]
 Nx = [diff(n,xy[0]) for n in N]
 Ny = [diff(n,xy[1]) for n in N]
 
-def NNe(i,j):
-    a = N[i]*N[j]
+def NNe(a,i,j):
     ax = integrate(a,xy[0]).subs(xy[0],1)-integrate(a,xy[0]).subs(xy[0],0)
     axy = integrate(ax,xy[1]).subs(xy[1],1)-integrate(ax,xy[1]).subs(xy[1],0)
     return axy
 
 def difNNe(i,j):
-    a = Nx[i]*Nx[j]
-    ax = integrate(a,xy[0]).subs(xy[0],1)-integrate(a,xy[0]).subs(xy[0],0)
-    axy1 = integrate(ax,xy[1]).subs(xy[1],1)-integrate(ax,xy[1]).subs(xy[1],0)
-    
-    a = Ny[i]*Ny[j]
-    ax = integrate(a,xy[0]).subs(xy[0],1)-integrate(a,xy[0]).subs(xy[0],0)
-    axy2 = integrate(ax,xy[1]).subs(xy[1],1)-integrate(ax,xy[1]).subs(xy[1],0)
-    return axy1 + axy2
+    return NNe(Nx[i]*Nx[j],i,j) + NNe(Ny[i]*Ny[j],i,j)
 
 def NN():
     NNMat = eye(4)
     for i in range(4):
         for j in range(4):
-            NNMat[i,j]=NNe(i,j)
+            NNMat[i,j]=NNe(N[i]*N[j],i,j)
     return NNMat
 
 def difNN():
