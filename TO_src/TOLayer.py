@@ -48,6 +48,10 @@ class TOLayer(torch.autograd.Function):
         if TOLayer.grid.isFree():
             TOLayer.u = TOLayer.sol.projectOutBases(TOLayer.u)
         return TOLayer.u
+    
+    @staticmethod
+    def redistance(rho):
+        return TOLayer.sol.reinitialize(rho, 1e-3, 1000, False)
         
 def debug(iter=0, DTYPE=torch.float64):
     bb=mg.BBox()

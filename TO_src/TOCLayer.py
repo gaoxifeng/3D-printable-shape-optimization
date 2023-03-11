@@ -52,6 +52,10 @@ class TOCLayer(torch.autograd.Function):
     def vertexToCell(rho): #u->b
         TOCLayer.sol.vertexToCell(TOCLayer.b,TOCLayer.u,rho)
         
+    @staticmethod
+    def redistance(rho):
+        return SOLayer.sol.reinitialize(rho, 1e-3, 1000, False)
+    
 def debug(iter=0, DTYPE=torch.float64):
     bb=mg.BBox()
     bb.minC=[-1,-1,-1]
