@@ -108,8 +108,10 @@ class ShapeOpt():
     def oc_grid(sdf0, s, eps, gradObj, gradVol, volTarget, CFL, Ker, Ker_S):
         def compute_volume(lam, sdf0):
             V_N = (gradObj + lam * gradVol).detach()
-            scale = torch.minimum(torch.tensor(1.0) / (torch.max(torch.abs(V_N)) + 1e-6), torch.tensor(1.0)).item()
-            sdf = (sdf0 - V_N * CFL * scale).detach()
+            #scale = torch.minimum(torch.tensor(1.0) / (torch.max(torch.abs(V_N)) + 1e-6), torch.tensor(1.0)).item()
+            #sdf = (sdf0 - V_N * CFL * scale).detach()
+            scale = torch.minimum(V_N / (torch.max(torch.abs(V_N)) + 1e-6), torch.tensor(1.0))
+            sdf = sdf0 -  CFL * scale
             H = ShapeOpt.Heaviside(sdf, eps, s).detach()
             H_filtered = (TopoOpt.filter_density(Ker, H) / Ker_S).detach()
             return sdf, torch.sum(H_filtered).item()
