@@ -50,7 +50,7 @@ class TOCLayer(torch.autograd.Function):
     
     @staticmethod
     def nodeToCell(rho): #u->b
-        TOCLayer.sol.nodeToCell(TOCLayer.b,TOCLayer.u,rho)
+        TOCLayer.sol.nodeToCellVector(TOCLayer.b,TOCLayer.u,rho)
         
     @staticmethod
     def redistance(rho, eps=1e-3, maxIter=1000, output=False):
