@@ -15,7 +15,7 @@ class TOCLayer(torch.autograd.Function):
         TOCLayer.grid = mg.GridGPU(phiTensor, phiFixedTensor, bb)
         TOCLayer.grid.coarsen(128)
         TOCLayer.sol = mg.GridSolverGPU(TOCLayer.grid)
-        TOCLayer.sol.setupLinearSystem(lam, mu)
+        TOCLayer.sol.setupLinearElasticity(lam, mu, 3)
         
         TOCLayer.b = f.cuda()
         TOCLayer.u = torch.zeros((TOCLayer.b.shape[0],TOCLayer.b.shape[1]+1,TOCLayer.b.shape[2]+1,TOCLayer.b.shape[3]+1)).cuda()
@@ -41,9 +41,9 @@ class TOCLayer(torch.autograd.Function):
         if TOCLayer.grid.isFree():
             #TOCLayer.b = TOCLayer.sol.projectOutBases(TOCLayer.b)    (projection for b is done inside setBCell)
             TOCLayer.u = TOCLayer.sol.projectOutBases(TOCLayer.u)
-        TOCLayer.sol.setRho(rho)
-        TOCLayer.sol.setBCell(TOCLayer.b)
-        TOCLayer.u = TOCLayer.sol.solveMGPCG(TOCLayer.u, TOCLayer.tol, TOCLayer.maxloop, True, TOCLayer.output)
+        TOCLayer.sol.updateVector(rho)
+        TOCLayer.sol.setBCellVector(TOCLayer.b,False)
+        TOCLayer.u = TOCLayer.sol.solveMGPCGVector(TOCLayer.u, TOCLayer.tol, TOCLayer.maxloop, True, TOCLayer.output)
         if TOCLayer.grid.isFree():
             TOCLayer.u = TOCLayer.sol.projectOutBases(TOCLayer.u)
         return TOCLayer.u

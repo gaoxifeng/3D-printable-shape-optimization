@@ -1,6 +1,7 @@
 import torch,time
 import numpy as np
 import libMG as mg
+from TOUtils import *
 from TOLayer import TOLayer
 import torch.nn.functional as F
 torch.set_default_dtype(torch.float64)
@@ -19,10 +20,11 @@ class TopoOpt():
         self.outputDetail = outputDetail
 
     def run(self, rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu):
-        nelx, nely, nelz = rho.shape
+        nelx, nely, nelz = shape3D(rho)
+        nelz = max(nelz,1)
         bb = mg.BBox()
         bb.minC = [0,0,0]
-        bb.maxC = [nelx,nely,nelz]
+        bb.maxC = shape3D(rho)
         Ker, Ker_S = TopoOpt.filter(self.rmin, rho)
 
         print("Minimum complicance problem with OC")
@@ -66,7 +68,7 @@ class TopoOpt():
                 print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + self.volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
         
         mg.finalizeGPU()
-        return rho_old.detach().cpu().numpy()
+        return to3DScalar(rho_old).detach().cpu().numpy()
     
     def filter(r_min, grid):
         L = int(np.floor(r_min))

@@ -1,6 +1,20 @@
 from TopoOpt import TopoOpt
 import torch,os
 
+def Toy_Example_2D(res=(360,120), volfrac=0.4):
+    nelx, nely = res
+    rho = torch.ones(res).cuda()*volfrac
+    phiTensor = -torch.ones_like(rho).cuda()
+    phiFixedTensor = torch.ones((nelx + 1, nely + 1)).cuda()
+    phiFixedTensor[0,:] = -1
+    f = torch.zeros((2, nelx + 1, nely + 1)).cuda()
+    f[1, -1, 0] = -1
+    lam = 0.3 / 0.52
+    mu = 1 / 2.6
+    def rhoMask(inputRho):
+        pass
+    return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
+
 def Toy_Example(res=(180,60,4), volfrac=0.3):
     nelx, nely, nelz = res
     rho = torch.ones(res).cuda()*volfrac
@@ -65,7 +79,7 @@ def Bridge_Example(res=(40,90,360), volfrac=0.1):
     return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
 if __name__ == "__main__":
-    _, volfrac, params = Bridge_Example()
+    _, volfrac, params = Toy_Example()
     sol = TopoOpt(volfrac=volfrac, rmin=2, outputDetail=False)
     if not os.path.exists("rho.pt"):
         rho = sol.run(*params)

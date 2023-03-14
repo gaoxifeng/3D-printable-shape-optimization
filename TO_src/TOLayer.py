@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import libMG as mg
+from TOUtils import *
 
 class TOLayer(torch.autograd.Function):
     grid = None
@@ -9,13 +10,15 @@ class TOLayer(torch.autograd.Function):
     tol = 1e-2
     maxloop = 1000
     output = True
+    dim = None
     
     @staticmethod
     def reset(phiTensor, phiFixedTensor, f, bb, lam, mu, tol=1e-2, maxloop=1000, output=True):
-        TOLayer.grid = mg.GridGPU(phiTensor, phiFixedTensor, bb)
+        TOLayer.grid = mg.GridGPU(to3DScalar(phiTensor), to3DNodeScalar(phiFixedTensor), bb)
         TOLayer.grid.coarsen(128)
+        TOLayer.dim = dim(phiTensor)
         TOLayer.sol = mg.GridSolverGPU(TOLayer.grid)
-        TOLayer.sol.setupLinearSystem(lam, mu)
+        TOLayer.sol.setupLinearElasticity(lam, mu, TOLayer.dim)
         
         TOLayer.b = f.cuda()
         if TOLayer.grid.isFree():
@@ -28,7 +31,8 @@ class TOLayer(torch.autograd.Function):
     @staticmethod
     def forward(ctx,rho):
         TOLayer.solveK(rho)
-        dc = TOLayer.sol.sensitivity(TOLayer.u)
+        dc = TOLayer.sol.sensitivity(to3DNodeVector(TOLayer.u))
+        dc = makeSameDimScalar(dc, TOLayer.dim)
         ctx.save_for_backward(dc)
         return -torch.sum(rho * dc)
         
@@ -42,16 +46,18 @@ class TOLayer(torch.autograd.Function):
         if TOLayer.grid.isFree():
             TOLayer.b = TOLayer.sol.projectOutBases(TOLayer.b)
             TOLayer.u = TOLayer.sol.projectOutBases(TOLayer.u)
-        TOLayer.sol.setRho(rho)
-        TOLayer.sol.setB(TOLayer.b)
-        TOLayer.u = TOLayer.sol.solveMGPCG(TOLayer.u, TOLayer.tol, TOLayer.maxloop, True, TOLayer.output)
+        TOLayer.sol.updateVector(to3DScalar(rho))
+        TOLayer.sol.setBVector(to3DNodeVector(TOLayer.b),False)
+        TOLayer.u = TOLayer.sol.solveMGPCGVector(to3DNodeVector(TOLayer.u), TOLayer.tol, TOLayer.maxloop, True, TOLayer.output)
+        TOLayer.u = makeSameDimVector(TOLayer.u, TOLayer.dim)
         if TOLayer.grid.isFree():
-            TOLayer.u = TOLayer.sol.projectOutBases(TOLayer.u)
+            TOLayer.u = TOLayer.sol.projectOutBases(to3DNodeVector(TOLayer.u))
+            TOLayer.u = makeSameDimVector(TOLayer.u, TOLayer.dim)
         return TOLayer.u
     
     @staticmethod
     def redistance(rho, eps=1e-3, maxIter=1000, output=False):
-        return TOLayer.sol.reinitialize(rho, eps, maxIter, output)
+        return makeSameDimScalar(TOLayer.sol.reinitialize(rho, eps, maxIter, output), TOLayer.dim)
         
 def debug(iter=0, DTYPE=torch.float64):
     bb=mg.BBox()
