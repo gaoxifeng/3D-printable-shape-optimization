@@ -7,7 +7,7 @@ class TOCWorseCase:
     def update_worst_case(rho):
         #inverse power method
         TOCLayer.u = TOCLayer.solveK(rho)
-        TOCLayer.vertexToCell(rho)
+        TOCLayer.nodeToCell(rho)
         TOCLayer.b = (TOCLayer.b / torch.norm(TOCLayer.b.reshape(-1))).detach()
         return TOCLayer.b
         
