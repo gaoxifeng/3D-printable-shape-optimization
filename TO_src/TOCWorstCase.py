@@ -28,7 +28,7 @@ class TOCWorseCase:
             if loop%outputInterval == 0:
                 print("it.: {0}, ch.: {1:.3f}, time: {2:.3f}, mem: {3:.3f}Gb".format(loop, change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
                 
-        return TOCLayer.b.detach().cpu().numpy()
+        return TOCLayer.b
       
 def debug(iter=0, DTYPE=torch.float64):
     bb=mg.BBox()
