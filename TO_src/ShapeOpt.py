@@ -60,7 +60,7 @@ class ShapeOpt():
             obj = TOLayer.apply(str * (E_max - E_min) + E_min)
             #simple replacement of topological derivative
             obj.backward()
-            dir = ((-str.grad * str) * (E_max - E_min) + E_min).detach()
+            dir = (-str.grad * (str * (E_max - E_min) + E_min)).detach()
             dirNode = ShapeOpt.cellToNode(dir)
             
             #set augmented Lagrangian parameter
