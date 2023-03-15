@@ -56,7 +56,7 @@ class TOLayer(torch.autograd.Function):
     def redistance(rho, eps=1e-3, maxIter=1000, output=False):
         return makeSameDimScalar(TOLayer.sol.reinitialize(rho, eps, maxIter, output), TOLayer.dim)
         
-def debug(iter=0, DTYPE=torch.float64):
+def debug3D(iter=0, DTYPE=torch.float64):
     bb=mg.BBox()
     bb.minC=[-1,-1,-1]
     bb.maxC=[1,1,1]
@@ -111,9 +111,63 @@ def debug(iter=0, DTYPE=torch.float64):
     analytic = torch.sum(rho.grad * drho)
     print('TOLayer: analytic=%f, numeric=%f, error=%f'%(analytic,numeric,analytic-numeric))
         
+def debug2D(iter=0, DTYPE=torch.float64):
+    bb=mg.BBox()
+    bb.minC=[-1,-1,0]
+    bb.maxC=[1,1,0]
+    res=[10,10]
+    
+    def interp1D(a,b,alpha):
+        return a*(1-alpha)+b*alpha
+    def interpC(x,y,bb):
+        id=[x,y]
+        for d in range(2):
+            id[d]=interp1D(bb.minC[d],bb.maxC[d],(id[d]+0.5)/res[d])
+        return np.array(id)
+    def interpV(x,y,bb):
+        id=[x,y]
+        for d in range(2):
+            id[d]=interp1D(bb.minC[d],bb.maxC[d],id[d]/res[d])
+        return np.array(id)
+    def phi(pos):
+        #if phi(pos)<0, then this position is solid
+        return np.linalg.norm(pos)-0.5
+    def phiFixed(pos):
+        #if phiFixed(pos)<0, then this position is fixed
+        if iter==0:
+            return 1
+        else: return np.sum(pos)
+
+    phiTensor=torch.rand(tuple(res),dtype=DTYPE).cuda()
+    for y in range(res[1]):
+        for x in range(res[0]):
+            phiTensor[x,y]=phi(interpC(x,y,bb))
+    
+    phiFixedTensor=torch.rand(tuple([res[0]+1,res[1]+1]),dtype=DTYPE).cuda()
+    for y in range(res[1]+1):
+        for x in range(res[0]+1):
+            phiFixedTensor[x,y]=phiFixed(interpV(x,y,bb))
+    f=torch.rand(tuple([3,res[0]+1,res[1]+1]),dtype=DTYPE).cuda()
+    
+    eps = 1e-7
+    TOLayer.reset(phiTensor, phiFixedTensor, f, bb, 100, 100, 1e-8)
+    rho = torch.rand(tuple(res),dtype=DTYPE).cuda()
+    
+    rho.requires_grad_()
+    E = TOLayer.apply(rho)
+    E.backward()
+    
+    drho = torch.ones(tuple(res),dtype=DTYPE).cuda()
+    rho2 = rho+drho*eps
+    E2 = TOLayer.apply(rho2)
+    numeric = (E2-E)/eps
+    analytic = torch.sum(rho.grad * drho)
+    print('TOLayer: analytic=%f, numeric=%f, error=%f'%(analytic,numeric,analytic-numeric))
+        
 if __name__=='__main__':
     torch.set_default_dtype(torch.float64)
     mg.initializeGPU()
-    debug(0)
-    debug(1)
+    debug3D(0)
+    debug3D(1)
+    debug2D(1)
     mg.finalizeGPU()

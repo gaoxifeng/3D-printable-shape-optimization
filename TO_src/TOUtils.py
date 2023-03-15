@@ -27,6 +27,14 @@ def to3DNodeVector(t):
         return t.unsqueeze(3).expand(3, x, y, 2)
     else: return t
     
+def to3DCellVector(t):
+    if dim(t)==3:
+        d, x, y = t.shape
+        if d == 2:
+            t = torch.nn.functional.pad(t, (0,0,0,0,0,1), "constant", 0)
+        return t.unsqueeze(3)
+    else: return t
+    
 def makeSameDimScalar(b, dim):
     if dim==2:
         return b[:,:,0]
