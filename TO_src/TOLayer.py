@@ -22,7 +22,7 @@ class TOLayer(torch.autograd.Function):
         
         TOLayer.b = f.cuda()
         if TOLayer.grid.isFree():
-            TOLayer.b = TOLayer.sol.projectOutBases(TOLayer.b)
+            TOLayer.b = makeSameDimVector(TOLayer.sol.projectOutBases(TOLayer.b), TOLayer.dim)
         TOLayer.u = torch.zeros(TOLayer.b.shape).cuda()
         TOLayer.tol = tol
         TOLayer.maxloop = maxloop
@@ -31,8 +31,7 @@ class TOLayer(torch.autograd.Function):
     @staticmethod
     def forward(ctx,rho):
         TOLayer.solveK(rho)
-        dc = TOLayer.sol.sensitivity(to3DNodeVector(TOLayer.u))
-        dc = makeSameDimScalar(dc, TOLayer.dim)
+        dc = makeSameDimScalar(TOLayer.sol.sensitivity(to3DNodeVector(TOLayer.u)), TOLayer.dim)
         ctx.save_for_backward(dc)
         return -torch.sum(rho * dc)
         
@@ -44,15 +43,13 @@ class TOLayer(torch.autograd.Function):
     @staticmethod
     def solveK(rho):
         if TOLayer.grid.isFree():
-            TOLayer.b = TOLayer.sol.projectOutBases(TOLayer.b)
-            TOLayer.u = TOLayer.sol.projectOutBases(TOLayer.u)
+            TOLayer.b = makeSameDimVector(TOLayer.sol.projectOutBases(TOLayer.b), TOLayer.dim)
+            TOLayer.u = makeSameDimVector(TOLayer.sol.projectOutBases(TOLayer.u), TOLayer.dim)
         TOLayer.sol.updateVector(to3DScalar(rho))
         TOLayer.sol.setBVector(to3DNodeVector(TOLayer.b),False)
-        TOLayer.u = TOLayer.sol.solveMGPCGVector(to3DNodeVector(TOLayer.u), TOLayer.tol, TOLayer.maxloop, True, TOLayer.output)
-        TOLayer.u = makeSameDimVector(TOLayer.u, TOLayer.dim)
+        TOLayer.u = makeSameDimVector(TOLayer.sol.solveMGPCGVector(to3DNodeVector(TOLayer.u), TOLayer.tol, TOLayer.maxloop, True, TOLayer.output), TOLayer.dim)
         if TOLayer.grid.isFree():
-            TOLayer.u = TOLayer.sol.projectOutBases(to3DNodeVector(TOLayer.u))
-            TOLayer.u = makeSameDimVector(TOLayer.u, TOLayer.dim)
+            TOLayer.u = makeSameDimVector(TOLayer.sol.projectOutBases(to3DNodeVector(TOLayer.u)), TOLayer.dim)
         return TOLayer.u
     
     @staticmethod
