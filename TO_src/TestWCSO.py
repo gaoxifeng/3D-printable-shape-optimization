@@ -50,6 +50,7 @@ class TestWCSO():
 
         phi = -self.rho_init.clone()
         strength = (SO.nodeToCell(phi) > 0).double().detach()
+        self.volfrac = torch.sum(strength).item() / strength.reshape(-1).shape[0]
         #initialize torch layer
         mg.initializeGPU()
         Initial_f = torch.rand((3, *self.rho_init.shape)).cuda()
@@ -135,7 +136,7 @@ class TestWCSO():
         Rho = self.dumbbell_SO()
         Rho = np.minimum(Rho, 1)
         res = Rho.shape
-        # volfrac = Rho.sum() / (res[0] * res[1] * res[2])
+        volfrac = Rho.sum() / (res[0] * res[1] * res[2])
 
         rho = torch.from_numpy(Rho).cuda()
         nelx, nely, nelz = res
