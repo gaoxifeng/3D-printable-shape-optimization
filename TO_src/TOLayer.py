@@ -22,7 +22,7 @@ class TOLayer(torch.autograd.Function):
         
         TOLayer.b = f.cuda()
         if TOLayer.grid.isFree():
-            TOLayer.b = makeSameDimVector(TOLayer.sol.projectOutBases(TOLayer.b), TOLayer.dim)
+            TOLayer.b = makeSameDimVector(TOLayer.sol.projectOutBases(to3DNodeVector(TOLayer.b)), TOLayer.dim)
         TOLayer.u = torch.zeros(TOLayer.b.shape).cuda()
         TOLayer.tol = tol
         TOLayer.maxloop = maxloop
@@ -43,8 +43,8 @@ class TOLayer(torch.autograd.Function):
     @staticmethod
     def solveK(rho):
         if TOLayer.grid.isFree():
-            TOLayer.b = makeSameDimVector(TOLayer.sol.projectOutBases(TOLayer.b), TOLayer.dim)
-            TOLayer.u = makeSameDimVector(TOLayer.sol.projectOutBases(TOLayer.u), TOLayer.dim)
+            TOLayer.b = makeSameDimVector(TOLayer.sol.projectOutBases(to3DNodeVector(TOLayer.b)), TOLayer.dim)
+            TOLayer.u = makeSameDimVector(TOLayer.sol.projectOutBases(to3DNodeVector(TOLayer.u)), TOLayer.dim)
         TOLayer.sol.updateVector(to3DScalar(rho))
         TOLayer.sol.setBVector(to3DNodeVector(TOLayer.b),False)
         TOLayer.u = makeSameDimVector(TOLayer.sol.solveMGPCGVector(to3DNodeVector(TOLayer.u), TOLayer.tol, TOLayer.maxloop, True, TOLayer.output), TOLayer.dim)
@@ -55,6 +55,18 @@ class TOLayer(torch.autograd.Function):
     @staticmethod
     def redistance(rho, eps=1e-3, maxIter=1000, output=False):
         return makeSameDimScalar(TOLayer.sol.reinitialize(rho, eps, maxIter, output), TOLayer.dim)
+        
+    @staticmethod
+    def setupCurvatureFlow(dt, tau):
+        TOLayer.sol.setupCurvatureFlow(dt, tau, TOLayer.dim)
+        
+    @staticmethod
+    def implicitCurvatureFlow(b, tol=1e-5, maxloop=100, MG=False):
+        if MG:
+            TOLayer.sol.updateScalar()
+        TOLayer.sol.setBScalar(to3DNodeScalar(b),False)
+        TOLayer.sol.mulBScalarByNNT()
+        return makeSameDimScalar(TOLayer.sol.solveMGPCGScalar(to3DNodeScalar(b), tol, maxloop, MG, TOLayer.output), TOLayer.dim)
         
 def debug3D(iter=0, DTYPE=torch.float64):
     bb=mg.BBox()

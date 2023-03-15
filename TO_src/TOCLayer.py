@@ -41,8 +41,8 @@ class TOCLayer(torch.autograd.Function):
     @staticmethod
     def solveK(rho):
         if TOCLayer.grid.isFree():
-            #TOCLayer.b = makeSameDimVector(TOCLayer.sol.projectOutBases(TOCLayer.b), TOCLayer.dim)
-            TOCLayer.u = makeSameDimVector(TOCLayer.sol.projectOutBases(TOCLayer.u), TOCLayer.dim)
+            #TOCLayer.b = makeSameDimVector(TOCLayer.sol.projectOutBases(to3DNodeVector(TOCLayer.b)), TOCLayer.dim)
+            TOCLayer.u = makeSameDimVector(TOCLayer.sol.projectOutBases(to3DNodeVector(TOCLayer.u)), TOCLayer.dim)
         TOCLayer.sol.updateVector(to3DScalar(rho))
         TOCLayer.sol.setBCellVector(to3DCellVector(TOCLayer.b),False)
         TOCLayer.u = makeSameDimVector(TOCLayer.sol.solveMGPCGVector(to3DNodeVector(TOCLayer.u), TOCLayer.tol, TOCLayer.maxloop, True, TOCLayer.output), TOCLayer.dim)
