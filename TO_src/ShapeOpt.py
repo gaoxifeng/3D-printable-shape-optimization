@@ -45,7 +45,7 @@ class ShapeOpt():
         #initialize torch layer
         mg.initializeGPU()
         TOLayer.reset(phiTensor, phiFixedTensor, f, bb, lam, mu, self.tolLinear, self.maxloopLinear, self.outputDetail)
-        TOLayer.setupCurvatureFlow(self.dt, self.tau)
+        TOLayer.setupCurvatureFlow(self.dt, self.tau * nelx * nely * nelz)
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
             loop += 1
