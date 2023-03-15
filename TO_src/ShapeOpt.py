@@ -45,7 +45,7 @@ class ShapeOpt():
         #initialize torch layer
         mg.initializeGPU()
         TOLayer.reset(phiTensor, phiFixedTensor, f, bb, lam, mu, self.tolLinear, self.maxloopLinear, self.outputDetail)
-        TOLayer.setupCurvatureFlow(self.tau, self.dt)
+        TOLayer.setupCurvatureFlow(self.dt, self.tau)
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
             loop += 1
@@ -71,7 +71,7 @@ class ShapeOpt():
             dirNode = ShapeOpt.cellToNode(dir)
             
             #set augmented Lagrangian parameter
-            ex = self.volfrac + (volInit - self.volfrac) * max(0,1 - loop / nvol)
+            ex = self.volfrac + (volInit - self.volfrac) * max(0, 1 - loop / nvol)
             lam = torch.sum(dirNode) / dirNode.reshape(-1).shape[0] * math.exp(self.p * ( (vol - ex) / ex + self.d))
             
             #update level set function

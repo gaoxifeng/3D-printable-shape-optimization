@@ -61,7 +61,7 @@ class TOLayer(torch.autograd.Function):
         TOLayer.sol.setupCurvatureFlow(dt, tau, TOLayer.dim)
         
     @staticmethod
-    def implicitCurvatureFlow(b, tol=1e-5, maxloop=100, MG=False):
+    def implicitCurvatureFlow(b, tol=1e-9, maxloop=100, MG=False):
         if MG:
             TOLayer.sol.updateScalar()
         TOLayer.sol.setBScalar(to3DNodeScalar(b),False)
