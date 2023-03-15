@@ -51,7 +51,7 @@ class ShapeOpt():
             loop += 1
             
             #compute volume
-            strength = (ShapeOpt.nodeToCell(phi)>0).float().detach()
+            strength = (ShapeOpt.nodeToCell(phi)>0).double().detach()
             vol = torch.sum(strength).item() / strength.reshape(-1).shape[0]
             if loop == 1:
                 volInit = vol
@@ -64,7 +64,7 @@ class ShapeOpt():
                 obj = 0
             else:
                 strength.requires_grad_()
-                obj = TOLayer.apply(str * (E_max - E_min) + E_min)
+                obj = TOLayer.apply(strength * (E_max - E_min) + E_min)
                 #simple replacement of topological derivative
                 obj.backward()
                 dir = (-strength.grad.detach() * (strength * (E_max - E_min) + E_min)).detach()
