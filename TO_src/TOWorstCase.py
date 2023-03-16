@@ -27,7 +27,7 @@ class TOWorstCase:
             if loop%outputInterval == 0:
                 print("it.: {0}, ch.: {1:.3f}, time: {2:.3f}, mem: {3:.3f}Gb".format(loop, change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
                 
-        return TOLayer.b.detach().cpu().numpy()
+        return TOLayer.b
       
 def debug(iter=0, DTYPE=torch.float64):
     bb=mg.BBox()
@@ -79,6 +79,7 @@ if __name__=='__main__':
     mg.initializeGPU()
     f, rho = debug(0)
     from Viewer import *
+    f = f.detach().cpu().numpy()
     showFMagnitudeVTK("fWorst",f)
     showRhoVTK("rho",rho)
     debug(1)

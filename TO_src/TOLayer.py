@@ -46,7 +46,7 @@ class TOLayer(torch.autograd.Function):
             TOLayer.b = makeSameDimVector(TOLayer.sol.projectOutBases(to3DNodeVector(TOLayer.b)), TOLayer.dim)
             TOLayer.u = makeSameDimVector(TOLayer.sol.projectOutBases(to3DNodeVector(TOLayer.u)), TOLayer.dim)
         TOLayer.sol.updateVector(to3DScalar(rho))
-        TOLayer.sol.setBVector(to3DNodeVector(TOLayer.b),False)
+        TOLayer.sol.setBNodeVector(to3DNodeVector(TOLayer.b),False)
         TOLayer.u = makeSameDimVector(TOLayer.sol.solveMGPCGVector(to3DNodeVector(TOLayer.u), TOLayer.tol, TOLayer.maxloop, True, TOLayer.output), TOLayer.dim)
         if TOLayer.grid.isFree():
             TOLayer.u = makeSameDimVector(TOLayer.sol.projectOutBases(to3DNodeVector(TOLayer.u)), TOLayer.dim)

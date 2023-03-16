@@ -82,6 +82,7 @@ if __name__=='__main__':
     mg.initializeGPU()
     f, rho = debug(0)
     from Viewer import *
+    f = f.detach().cpu().numpy()
     showFMagnitudeCellVTK("fWorstCell",f)
     showFMagnitudeCellVTK("fWorstCellX",f,lambda vec:vec[0])
     showFMagnitudeCellVTK("fWorstCellY",f,lambda vec:vec[1])

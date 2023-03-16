@@ -3,7 +3,6 @@ import numpy as np
 import libMG as mg
 from TOUtils import *
 
-
 class TOCLayer(torch.autograd.Function):
     grid = None
     sol = None
@@ -12,18 +11,18 @@ class TOCLayer(torch.autograd.Function):
     maxloop = 1000
     output = True
     dim = None
+    fixed = False
 
     @staticmethod
     def reset(phiTensor, phiFixedTensor, f, bb, lam, mu, tol=1e-2, maxloop=1000, output=True):
-        TOCLayer.grid = mg.GridGPU(phiTensor, phiFixedTensor, bb)
+        TOCLayer.grid = mg.GridGPU(to3DScalar(phiTensor), to3DNodeScalar(phiFixedTensor), bb)
         TOCLayer.grid.coarsen(128)
-        TOCLayer.sol = mg.GridSolverGPU(TOCLayer.grid)
-        TOCLayer.sol.setupLinearElasticity(lam, mu, 3)
         TOCLayer.dim = dim(phiTensor)
+        TOCLayer.sol = mg.GridSolverGPU(TOCLayer.grid)
+        TOCLayer.sol.setupLinearElasticity(lam, mu, TOCLayer.dim)
 
         TOCLayer.b = f.cuda()
-        TOCLayer.u = torch.zeros(
-            (TOCLayer.b.shape[0], TOCLayer.b.shape[1] + 1, TOCLayer.b.shape[2] + 1, TOCLayer.b.shape[3] + 1)).cuda()
+        TOCLayer.u = torch.zeros(([TOCLayer.b.shape[0]]+[TOCLayer.b.shape[i]+1 for i in range(1,len(TOCLayer.b.shape))])).cuda()
         TOCLayer.tol = tol
         TOCLayer.maxloop = maxloop
         TOCLayer.output = output
@@ -31,10 +30,14 @@ class TOCLayer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, rho):
         TOCLayer.solveK(rho)
-        dcc = TOCLayer.sol.sensitivityCell(TOCLayer.b, TOCLayer.u)
-        dc = TOCLayer.sol.sensitivity(TOCLayer.u)
-        ctx.save_for_backward(dc + dcc * 2)
-        return -torch.sum(rho * dc)
+        if TOCLayer.fixed:
+            dc = TOCLayer.sol.sensitivity(TOCLayer.u)
+            return -torch.sum(rho * dc)
+        else:
+            dcc = TOCLayer.sol.sensitivityCell(TOCLayer.b, TOCLayer.u)
+            dc = TOCLayer.sol.sensitivity(TOCLayer.u)
+            ctx.save_for_backward(dc + dcc * 2)
+            return -torch.sum(rho * dc)
 
     @staticmethod
     def backward(ctx, coef):
@@ -44,13 +47,19 @@ class TOCLayer(torch.autograd.Function):
     @staticmethod
     def solveK(rho):
         if TOCLayer.grid.isFree():
-            # TOCLayer.b = TOCLayer.sol.projectOutBases(TOCLayer.b)   # (projection for b is done inside setBCell)
-            TOCLayer.u = TOCLayer.sol.projectOutBases(TOCLayer.u)
-        TOCLayer.sol.updateVector(rho)
-        TOCLayer.sol.setBCellVector(TOCLayer.b, False)
-        TOCLayer.u = TOCLayer.sol.solveMGPCGVector(TOCLayer.u, TOCLayer.tol, TOCLayer.maxloop, True, TOCLayer.output)
+            #TOCLayer.b = makeSameDimVector(TOCLayer.sol.projectOutBases(to3DNodeVector(TOCLayer.b)), TOCLayer.dim)  # (projection for b is done inside setBCell)
+            TOCLayer.u = makeSameDimVector(TOCLayer.sol.projectOutBases(to3DNodeVector(TOCLayer.u)), TOCLayer.dim)
+            if TOCLayer.fixed:
+                TOCLayer.bOut = makeSameDimVector(TOCLayer.sol.projectOutBases(to3DNodeVector(TOCLayer.bOut)), TOCLayer.dim)
+        TOCLayer.sol.updateVector(to3DScalar(rho))
+        if TOCLayer.fixed:
+            TOCLayer.sol.setBNodeVector(to3DNodeVector(TOCLayer.bOut), False)
+        else: 
+            TOCLayer.sol.setBCellVector(to3DCellVector(TOCLayer.b), False)
+            TOCLayer.bOut = makeSameDimVector(TOCLayer.sol.getBNodeVector(), TOCLayer.dim)
+        TOCLayer.u = makeSameDimVector(TOCLayer.sol.solveMGPCGVector(to3DNodeVector(TOCLayer.u), TOCLayer.tol, TOCLayer.maxloop, True, TOCLayer.output), TOCLayer.dim)
         if TOCLayer.grid.isFree():
-            TOCLayer.u = TOCLayer.sol.projectOutBases(TOCLayer.u)
+            TOCLayer.u = makeSameDimVector(TOCLayer.sol.projectOutBases(to3DNodeVector(TOCLayer.u)), TOCLayer.dim)
         return TOCLayer.u
 
     @staticmethod
@@ -59,7 +68,7 @@ class TOCLayer(torch.autograd.Function):
 
     @staticmethod
     def redistance(rho, eps=1e-3, maxIter=1000, output=False):
-        return TOLayer.sol.reinitialize(rho, eps, maxIter, output)
+        return makeSameDimScalar(TOCLayer.sol.reinitialize(rho, eps, maxIter, output), TOCLayer.dim)
 
     @staticmethod
     def setupCurvatureFlow(dt, tau):
@@ -71,9 +80,15 @@ class TOCLayer(torch.autograd.Function):
             TOCLayer.sol.updateScalar()
         TOCLayer.sol.setBScalar(to3DNodeScalar(b), False)
         TOCLayer.sol.mulBScalarByNNT()
-        return makeSameDimScalar(TOCLayer.sol.solveMGPCGScalar(to3DNodeScalar(b), tol, maxloop, MG, TOCLayer.output),
-                                 TOCLayer.dim)
+        return makeSameDimScalar(TOCLayer.sol.solveMGPCGScalar(to3DNodeScalar(b), tol, maxloop, MG, TOCLayer.output), TOCLayer.dim)
 
+    @staticmethod
+    def fix():
+        TOCLayer.fixed=True
+        
+    @staticmethod
+    def free():
+        TOCLayer.fixed=False
 
 def debug(iter=0, DTYPE=torch.float64):
     bb = mg.BBox()

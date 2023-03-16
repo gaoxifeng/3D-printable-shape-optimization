@@ -44,6 +44,8 @@ class TopoOpt():
         volume = torch.sum(rho_filtered)
         volume.backward()
         gradVolume = rho.grad.detach()
+        if self.volfrac is None:
+            self.volfrac = volume.item()
             
         #initialize torch layer
         mg.initializeGPU()
