@@ -68,8 +68,8 @@ class TOLayer(torch.autograd.Function):
     def implicitCurvatureFlow(b, tol=1e-9, maxloop=100, MG=False):
         if MG:
             TOLayer.sol.updateScalar()
-        TOLayer.sol.setBScalar(to3DNodeScalar(b),False)
-        TOLayer.sol.mulBScalarByNNT()
+        TOLayer.sol.setBNodeScalar(to3DNodeScalar(b),False)
+        TOLayer.sol.mulBNodeScalarByNNT()
         return makeSameDimScalar(TOLayer.sol.solveMGPCGScalar(to3DNodeScalar(b), tol, maxloop, MG, TOLayer.output), TOLayer.dim)
         
 def debug3D(iter=0, DTYPE=torch.float64):
