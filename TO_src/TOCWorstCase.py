@@ -29,7 +29,7 @@ class TOCWorseCase:
             
             end = time.time()
             if loop%outputInterval == 0:
-                print("it.: {0}, ch.: {1:.3f}, time: {2:.3f}, mem: {3:.3f}Gb".format(loop, change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
+                print("it.wc: {0}, ch.: {1:.3f}, time: {2:.3f}, mem: {3:.3f}Gb".format(loop, change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
                 
         TOCLayer.tol = tmp
         return TOCLayer.b

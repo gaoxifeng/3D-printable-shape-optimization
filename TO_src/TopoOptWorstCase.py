@@ -1,7 +1,6 @@
 from TopoOpt import *
 from TOCLayer import TOCLayer
 from TOCWorstCase import TOCWorseCase
-#from Viewer import *
 
 class TopoOptWorstCase(TopoOpt):
     def __init__(self, *, p=3, rmin=5, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
@@ -56,15 +55,34 @@ class TopoOptWorstCase(TopoOpt):
             rho_filtered = TopoOpt.filter_density(Ker, rho)/Ker_S
             obj = TOCLayer.apply(E_min + rho_filtered ** self.p * (E_max - E_min))
             obj.backward()
-            gradObj = rho.grad.detach()
-            #showRhoVTK("rho", to3DScalar(gradObj).detach().cpu().numpy(), False)
+            gradObj = (rho.grad / torch.max(torch.abs(rho.grad))).detach()
             
             rho_old = rho.clone()
-            rho, g = TopoOpt.oc_grid(rho, gradObj, gradVolume, g, rhoMask)
+            rho, g = TopoOptWorstCase.oc_grid(rho, gradObj, gradVolume, g, rhoMask)
             change = torch.linalg.norm(rho.reshape(-1,1) - rho_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
             if loop%self.outputInterval == 0:
                 print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
+                showRhoVTK("rho"+str(loop), to3DScalar(rho).detach().cpu().numpy(), False)
         
         mg.finalizeGPU()
         return to3DScalar(rho_old).detach().cpu().numpy()
+
+    def oc_grid(x, gradObj, gradVolume, g, rhoMask):
+        l1 = -1e9
+        l2 = 1e9
+        move = 0.2
+        eta = 0.5
+        # reshape to perform vector operations
+        while (l2 - l1) > 1e-6:
+            lmid = 0.5 * (l2 + l1)
+            #Be_eta = (torch.maximum( torch.tensor(0.0), torch.div(-gradObj, gradVolume) / lmid ) ** eta).detach()
+            #xnew = (torch.maximum(torch.tensor(0.0), torch.maximum(x - move, torch.minimum(torch.tensor(1.0), torch.minimum(x + move, x * Be_eta))))).detach()
+            xnew = (torch.maximum(torch.tensor(0.0), torch.maximum(x - move, torch.minimum(torch.tensor(1.0), torch.minimum(x + move, x - gradObj - lmid * gradVolume))))).detach()
+            rhoMask(xnew)
+            gt = g + torch.sum((gradVolume * (xnew - x))).item()
+            if gt > 0:
+                l1 = lmid
+            else:
+                l2 = lmid
+        return (xnew, gt)

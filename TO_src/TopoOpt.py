@@ -5,6 +5,7 @@ from TOUtils import *
 from TOLayer import TOLayer
 import torch.nn.functional as F
 torch.set_default_dtype(torch.float64)
+from Viewer import *
 
 class TopoOpt():
     def __init__(self, *, p=3, rmin=5, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
@@ -66,6 +67,7 @@ class TopoOpt():
             end = time.time()
             if loop%self.outputInterval == 0:
                 print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
+                showRhoVTK("rho"+str(loop), to3DScalar(rho).detach().cpu().numpy(), False)
         
         mg.finalizeGPU()
         return to3DScalar(rho_old).detach().cpu().numpy()
