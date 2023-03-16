@@ -18,14 +18,11 @@ def Dumbell_Example_2D(res=(360,120), volfrac=None):
     mu = 1 / 2.6
     def rhoMask(inputRho):
         pass
-    return res, volfrac, (rho, phiTensor, phiFixedTensor, rhoMask, lam, mu)
+    return res, (rho, phiTensor, phiFixedTensor, rhoMask, lam, mu)
 
 if __name__ == "__main__":
-    _, volfrac, params = Dumbell_Example_2D()
-    from TOUtils import *
-    #showRhoVTK("rho",to3DScalar(params[0]).detach().cpu().numpy(),False)
-    #exit(-1)
-    sol = TopoOptWorstCase(volfrac=volfrac, rmin=2, outputDetail=False)
+    _, params = Dumbell_Example_2D()
+    sol = TopoOptWorstCase(rmin=2, outputDetail=False)
     if not os.path.exists("rho.pt"):
         rho = sol.run(*params)
         torch.save(rho,"rho.pt")

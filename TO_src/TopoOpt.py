@@ -7,9 +7,8 @@ import torch.nn.functional as F
 torch.set_default_dtype(torch.float64)
 
 class TopoOpt():
-    def __init__(self, *, volfrac, p=3, rmin=5, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
+    def __init__(self, *, p=3, rmin=5, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
         # self.device = 'cpu'
-        self.volfrac = volfrac
         self.p = p
         self.rmin = rmin
         self.maxloop = maxloop
@@ -26,10 +25,11 @@ class TopoOpt():
         bb.minC = [0,0,0]
         bb.maxC = shape3D(rho)
         Ker, Ker_S = TopoOpt.filter(self.rmin, rho)
+        volfrac = torch.sum(rho).item() / rho.reshape(-1).shape[0]
 
         print("Minimum complicance problem with OC")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
-        print(f"Volume fration: {self.volfrac}, Penalty p: {self.p}, Filter radius: {self.rmin}")
+        print(f"Volume fration: {volfrac}, Penalty p: {self.p}, Filter radius: {self.rmin}")
         # max and min stiffness
         E_min = torch.tensor(1e-3)
         E_max = torch.tensor(1.0)
@@ -44,8 +44,6 @@ class TopoOpt():
         volume = torch.sum(rho_filtered)
         volume.backward()
         gradVolume = rho.grad.detach()
-        if self.volfrac is None:
-            self.volfrac = volume.item()
             
         #initialize torch layer
         mg.initializeGPU()
@@ -67,7 +65,7 @@ class TopoOpt():
             change = torch.linalg.norm(rho.reshape(-1,1) - rho_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
             if loop%self.outputInterval == 0:
-                print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + self.volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
+                print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
         
         mg.finalizeGPU()
         return to3DScalar(rho_old).detach().cpu().numpy()

@@ -13,7 +13,7 @@ def Toy_Example_2D(res=(360,120), volfrac=0.4):
     mu = 1 / 2.6
     def rhoMask(inputRho):
         pass
-    return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
+    return res, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
 def Toy_Example(res=(180,60,4), volfrac=0.3):
     nelx, nely, nelz = res
@@ -27,7 +27,7 @@ def Toy_Example(res=(180,60,4), volfrac=0.3):
     mu = 1 / 2.6
     def rhoMask(inputRho):
         pass
-    return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
+    return res, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
 def Support_Example(res=(128,128,64), volfrac=0.15):
     nelx, nely, nelz = res
@@ -46,7 +46,7 @@ def Support_Example(res=(128,128,64), volfrac=0.15):
     mu = 1 / 2.6
     def rhoMask(inputRho):
         pass
-    return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
+    return res, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
 def Bridge_Example(res=(40,90,360), volfrac=0.1):
     nelx, nely, nelz = res
@@ -76,11 +76,11 @@ def Bridge_Example(res=(40,90,360), volfrac=0.1):
     def rhoMask(inputRho):
         inputRho[:, non-ny:non, :] = 1
         inputRho[load:nelx-load, non:non+non//2, :] = 0
-    return res, volfrac, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
+    return res, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
 if __name__ == "__main__":
-    _, volfrac, params = Toy_Example()
-    sol = TopoOpt(volfrac=volfrac, rmin=2, outputDetail=False)
+    _, params = Toy_Example()
+    sol = TopoOpt(rmin=2, outputDetail=False)
     if not os.path.exists("rho.pt"):
         rho = sol.run(*params)
         torch.save(rho,"rho.pt")
