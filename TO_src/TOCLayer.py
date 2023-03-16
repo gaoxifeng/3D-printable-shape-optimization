@@ -31,11 +31,12 @@ class TOCLayer(torch.autograd.Function):
     def forward(ctx, rho):
         TOCLayer.solveK(rho)
         if TOCLayer.fixed:
-            dc = TOCLayer.sol.sensitivity(TOCLayer.u)
+            dc = makeSameDimScalar(TOLayer.sol.sensitivity(to3DNodeVector(TOLayer.u)), TOLayer.dim)
+            ctx.save_for_backward(dc)
             return -torch.sum(rho * dc)
         else:
-            dcc = TOCLayer.sol.sensitivityCell(TOCLayer.b, TOCLayer.u)
-            dc = TOCLayer.sol.sensitivity(TOCLayer.u)
+            dcc = makeSameDimScalar(TOCLayer.sol.sensitivityCell(to3DCellVector(TOCLayer.b), to3DNodeVector(TOLayer.u)), TOLayer.dim)
+            dc = makeSameDimScalar(TOLayer.sol.sensitivity(to3DNodeVector(TOLayer.u)), TOLayer.dim)
             ctx.save_for_backward(dc + dcc * 2)
             return -torch.sum(rho * dc)
 
