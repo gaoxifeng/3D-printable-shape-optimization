@@ -86,7 +86,7 @@ class TOCLayer(torch.autograd.Function):
         if MG:
             TOCLayer.sol.updateScalar()
         TOCLayer.sol.setBScalar(to3DNodeScalar(b), False)
-        TOCLayer.sol.mulBScalarByNNT()
+        TOCLayer.sol.mulBNodeScalarByNNT()
         return makeSameDimScalar(TOCLayer.sol.solveMGPCGScalar(to3DNodeScalar(b), tol, maxloop, MG, TOCLayer.output), TOCLayer.dim)
 
     @staticmethod
