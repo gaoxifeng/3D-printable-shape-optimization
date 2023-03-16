@@ -11,7 +11,10 @@ class TOCWorseCase:
         TOCLayer.b = (TOCLayer.b / torch.norm(TOCLayer.b.reshape(-1))).detach()
         return TOCLayer.b
         
-    def compute_worst_case(rho, eps=1e-2, maxloop=100, outputInterval=1):
+    def compute_worst_case(rho, tol=1e-4, eps=1e-2, maxloop=100, outputInterval=1):
+        tmp = TOCLayer.tol
+        TOCLayer.tol = tol
+        
         TOCLayer.b = torch.rand(TOCLayer.b.shape).cuda()
         change = eps*2
         loop = 0
@@ -28,6 +31,7 @@ class TOCWorseCase:
             if loop%outputInterval == 0:
                 print("it.: {0}, ch.: {1:.3f}, time: {2:.3f}, mem: {3:.3f}Gb".format(loop, change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
                 
+        TOCLayer.tol = tmp
         return TOCLayer.b
       
 def debug(iter=0, DTYPE=torch.float64):
