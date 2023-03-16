@@ -1,4 +1,4 @@
-import torch,time
+import torch,time,os
 import numpy as np
 import libMG as mg
 from TOUtils import *
@@ -66,8 +66,10 @@ class TopoOpt():
             change = torch.linalg.norm(rho.reshape(-1,1) - rho_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
             if loop%self.outputInterval == 0:
+                if not os.path.exists("results"):
+                    os.mkdir("results")
                 print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
-                showRhoVTK("rho"+str(loop), to3DScalar(rho).detach().cpu().numpy(), False)
+                showRhoVTK("result/rho"+str(loop), to3DScalar(rho).detach().cpu().numpy(), False)
         
         mg.finalizeGPU()
         return to3DScalar(rho_old).detach().cpu().numpy()
@@ -97,7 +99,6 @@ class TopoOpt():
         l2 = 1e9
         move = 0.2
         eta = 0.5
-        # reshape to perform vector operations
         while (l2 - l1) / (l1 + l2) > 1e-3 and (l1 + l2) > 0:
             lmid = 0.5 * (l2 + l1)
             Be_eta = (torch.maximum( torch.tensor(0.0), torch.div(-gradObj, gradVolume) / lmid ) ** eta).detach()

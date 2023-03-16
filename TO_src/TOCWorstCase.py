@@ -3,7 +3,7 @@ import numpy as np
 import libMG as mg
 from TOCLayer import TOCLayer
 
-class TOCWorseCase:
+class TOCWorstCase:
     def update_worst_case(rho):
         #inverse power method
         TOCLayer.u = TOCLayer.solveK(rho)
@@ -24,7 +24,7 @@ class TOCWorseCase:
             loop += 1
             
             b_old = TOCLayer.b.clone()
-            TOCWorseCase.update_worst_case(rho)
+            TOCWorstCase.update_worst_case(rho)
             change = torch.linalg.norm(TOCLayer.b.reshape(-1,1) - b_old.reshape(-1,1), ord='fro').item()
             
             end = time.time()

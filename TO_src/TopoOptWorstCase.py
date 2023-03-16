@@ -1,6 +1,6 @@
 from TopoOpt import *
 from TOCLayer import TOCLayer
-from TOCWorstCase import TOCWorseCase
+from TOCWorstCase import TOCWorstCase
 
 class TopoOptWorstCase(TopoOpt):
     def __init__(self, *, p=3, rmin=5, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
@@ -46,7 +46,9 @@ class TopoOptWorstCase(TopoOpt):
             #update worst case
             TOCLayer.free()
             rho_filtered = (TopoOpt.filter_density(Ker, rho)/Ker_S).detach()
-            TOCWorseCase.compute_worst_case(E_min + rho_filtered ** self.p * (E_max - E_min))
+            if loop == 1:
+                TOCWorstCase.compute_worst_case(E_min + rho_filtered ** self.p * (E_max - E_min))
+            else: TOCWorstCase.update_worst_case(E_min + rho_filtered ** self.p * (E_max - E_min))
             TOCLayer.fix()
         
             #compute filtered objective gradient
@@ -55,15 +57,17 @@ class TopoOptWorstCase(TopoOpt):
             rho_filtered = TopoOpt.filter_density(Ker, rho)/Ker_S
             obj = TOCLayer.apply(E_min + rho_filtered ** self.p * (E_max - E_min))
             obj.backward()
-            gradObj = (rho.grad / torch.max(torch.abs(rho.grad))).detach()
+            gradObj = rho.grad.detach()
             
             rho_old = rho.clone()
             rho, g = TopoOptWorstCase.oc_grid(rho, gradObj, gradVolume, g, rhoMask)
             change = torch.linalg.norm(rho.reshape(-1,1) - rho_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
             if loop%self.outputInterval == 0:
+                if not os.path.exists("results"):
+                    os.mkdir("results")
                 print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
-                showRhoVTK("rho"+str(loop), to3DScalar(rho).detach().cpu().numpy(), False)
+                showRhoVTK("results/rho"+str(loop), to3DScalar(rho).detach().cpu().numpy(), False)
         
         mg.finalizeGPU()
         return to3DScalar(rho_old).detach().cpu().numpy()
@@ -73,8 +77,9 @@ class TopoOptWorstCase(TopoOpt):
         l2 = 1e9
         move = 0.2
         eta = 0.5
-        # reshape to perform vector operations
-        while (l2 - l1) > 1e-6:
+        gt = 1
+        gradObj *= min(1, 1 / torch.max(torch.abs(gradObj)).item())
+        while (l2 - l1) > 1e-6 and abs(gt) > 1e-3:
             lmid = 0.5 * (l2 + l1)
             xnewRaw = x - gradObj - lmid * gradVolume
             xnew = (torch.maximum(torch.tensor(0.0), torch.maximum(x - move, torch.minimum(torch.tensor(1.0), torch.minimum(x + move, xnewRaw))))).detach()
