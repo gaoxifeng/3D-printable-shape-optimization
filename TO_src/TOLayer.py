@@ -53,9 +53,13 @@ class TOLayer(torch.autograd.Function):
         return TOLayer.u
     
     @staticmethod
-    def redistance(rho, eps=1e-3, maxIter=1000, output=False):
-        return makeSameDimScalar(TOLayer.sol.reinitialize(rho, eps, maxIter, output), TOLayer.dim)
-        
+    def reinitializeCell(rho, eps=1e-3, maxIter=1000, output=False):
+        return makeSameDimScalar(TOLayer.sol.reinitializeCell(rho, eps, maxIter, output), TOLayer.dim)
+
+    @staticmethod
+    def reinitializeNode(rho, eps=1e-3, maxIter=1000, output=False):
+        return makeSameDimScalar(TOLayer.sol.reinitializeNode(rho, eps, maxIter, output), TOLayer.dim)
+    
     @staticmethod
     def setupCurvatureFlow(dt, tau):
         TOLayer.sol.setupCurvatureFlow(dt, tau, TOLayer.dim)

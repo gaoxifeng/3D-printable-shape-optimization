@@ -70,9 +70,13 @@ class TOCLayer(torch.autograd.Function):
         TOCLayer.b = makeSameDimVector(TOCLayer.b, TOCLayer.dim)
 
     @staticmethod
-    def redistance(rho, eps=1e-3, maxIter=1000, output=False):
-        return makeSameDimScalar(TOCLayer.sol.reinitialize(rho, eps, maxIter, output), TOCLayer.dim)
+    def reinitializeCell(rho, eps=1e-3, maxIter=1000, output=False):
+        return makeSameDimScalar(TOCLayer.sol.reinitializeCell(rho, eps, maxIter, output), TOCLayer.dim)
 
+    @staticmethod
+    def reinitializeNode(rho, eps=1e-3, maxIter=1000, output=False):
+        return makeSameDimScalar(TOCLayer.sol.reinitializeNode(rho, eps, maxIter, output), TOCLayer.dim)
+    
     @staticmethod
     def setupCurvatureFlow(dt, tau):
         TOCLayer.sol.setupCurvatureFlow(dt, tau, TOCLayer.dim)
