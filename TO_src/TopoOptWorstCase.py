@@ -76,9 +76,8 @@ class TopoOptWorstCase(TopoOpt):
         # reshape to perform vector operations
         while (l2 - l1) > 1e-6:
             lmid = 0.5 * (l2 + l1)
-            #Be_eta = (torch.maximum( torch.tensor(0.0), torch.div(-gradObj, gradVolume) / lmid ) ** eta).detach()
-            #xnew = (torch.maximum(torch.tensor(0.0), torch.maximum(x - move, torch.minimum(torch.tensor(1.0), torch.minimum(x + move, x * Be_eta))))).detach()
-            xnew = (torch.maximum(torch.tensor(0.0), torch.maximum(x - move, torch.minimum(torch.tensor(1.0), torch.minimum(x + move, x - gradObj - lmid * gradVolume))))).detach()
+            xnewRaw = x - gradObj - lmid * gradVolume
+            xnew = (torch.maximum(torch.tensor(0.0), torch.maximum(x - move, torch.minimum(torch.tensor(1.0), torch.minimum(x + move, xnewRaw))))).detach()
             rhoMask(xnew)
             gt = g + torch.sum((gradVolume * (xnew - x))).item()
             if gt > 0:
