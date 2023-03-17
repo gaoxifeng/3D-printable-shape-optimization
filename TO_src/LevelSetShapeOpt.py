@@ -69,12 +69,11 @@ class LevelSetShapeOpt():
             
             #compute Lagrangian multiplier
             gradObj *= min(1, 1/torch.max(torch.abs(gradObj)))
-            lam, phi = LevelSetShapeOpt.find_lam(phi, gradObj, gradVolume, volTarget, self.h, self.dt)
+            lam, _ = LevelSetShapeOpt.find_lam(phi, gradObj, gradVolume, volTarget, self.h, self.dt)
             
             #update level set function / reinitialize
             phi_old = phi.clone()
-            C = gradObj.reshape(-1).shape[0] / torch.sum(torch.abs(gradObj)).item()
-            phi = TOLayer.implicitCurvatureFlow(phi / self.dt)
+            phi = TOLayer.implicitCurvatureFlow((gradObj - lam) + phi / self.dt)
             phi = TOLayer.reinitializeNode(phi)
             change = torch.linalg.norm(phi.reshape(-1,1) - phi_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
