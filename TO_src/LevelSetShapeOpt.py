@@ -105,7 +105,7 @@ class LevelSetShapeOpt():
         return (lmid, phi)
     
     def initialize_phi(phiFixedTensor, blockRes, f=None, evenOdd=1, scale=.3):
-        phi = torch.ones_like(phiFixedTensor).cuda()
+        phi = -torch.ones_like(phiFixedTensor).cuda()
         
         #determine resolution
         res = list(phi.shape)
@@ -143,6 +143,6 @@ class LevelSetShapeOpt():
                         for yy in range(left[1],right[1]):
                             for zz in range(left[2],right[2]):
                                 if sum([(p-c)**2/s**2 for p,c,s in zip([xx,yy,zz],ctr,size)])<1.:
-                                    to3DNodeScalar(phi)[xx,yy,zz]=-1.
+                                    to3DNodeScalar(phi)[xx,yy,zz]=1.
                                 
         return phi
