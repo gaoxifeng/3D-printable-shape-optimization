@@ -27,10 +27,10 @@ def Toy_Example_2D(res=(360,120), volfrac=0.4):
     return res, (phiTensor, phiFixedTensor, f, lam, mu, phi)
 
 if __name__ == "__main__":
-    _, params = Cube_Example_2D()
+    _, params = Toy_Example_2D()
     sol = LevelSetShapeOpt(outputDetail=False)
     if not os.path.exists("phi.pt"):
-        phi = sol.run(*params, curvatureOnly=True)
+        phi = sol.run(*params)
         torch.save(phi,"phi.pt")
     else: phi=torch.load("phi.pt")
     from Viewer import *

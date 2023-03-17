@@ -96,7 +96,7 @@ class LevelSetShapeOpt():
                 l2 = lmid
         return (lmid, vol)
     
-    def initialize_phi(phiFixedTensor, blockRes, f=None, evenOdd=1, scale=.3):
+    def initialize_phi(phiFixedTensor, blockRes, f=None, evenOdd=1, scale=.55):
         phi = -torch.ones_like(phiFixedTensor).cuda()
         
         #determine resolution
