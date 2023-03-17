@@ -47,17 +47,9 @@ class LevelSetShapeOpt():
             start = time.time()
             loop += 1
             
-            #compute volume gradient
-            phi = phi.detach()
-            phi.requires_grad_()
-            rho = LevelSetShapeOpt.computeDensity(phi, self.h)
-            vol = torch.sum(rho)
-            vol.backward()
-            gradVolume = phi.grad.detach()
-            
             #FE-analysis, calculate sensitivity
             if curvatureOnly:
-                gradObj = -gradVolume
+                gradObj = -torch.ones_like(phi)
                 obj = 0
             else:
                 phi = phi.detach()
@@ -69,11 +61,11 @@ class LevelSetShapeOpt():
             
             #compute Lagrangian multiplier
             gradObj *= min(1, 1/torch.max(torch.abs(gradObj)))
-            lam, _ = LevelSetShapeOpt.find_lam(phi, gradObj, gradVolume, volTarget, self.h, self.dt)
+            lam, vol = LevelSetShapeOpt.find_lam(phi, gradObj, volTarget, self.h, self.dt)
             
             #update level set function / reinitialize
             phi_old = phi.clone()
-            phi = TOLayer.implicitCurvatureFlow((gradObj - gradVolume * lam) + phi / self.dt)
+            phi = TOLayer.implicitCurvatureFlow((gradObj - lam) + phi / self.dt)
             phi = TOLayer.reinitializeNode(phi)
             change = torch.linalg.norm(phi.reshape(-1,1) - phi_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
@@ -89,20 +81,20 @@ class LevelSetShapeOpt():
         Hphic = phic**3 * .25 - phic * .75 + 0.5
         return LevelSetTopoOpt.nodeToCell(Hphic)
     
-    def find_lam(phi0, gradObj, gradVolume, volTarget, h, dt):
+    def find_lam(phi0, gradObj, volTarget, h, dt):
         l1 = -1e9
         l2 = 1e9
         vol = 0.
         while (l2 - l1) > 1e-3 and abs(vol - volTarget) > 1e-3:
             lmid = 0.5 * (l2 + l1)
-            phi = phi0 + (gradObj - gradVolume * lmid) * dt
+            phi = phi0 + (gradObj - lmid) * dt
             rho = LevelSetShapeOpt.computeDensity(phi, h)
             vol = torch.sum(rho).item()
             if vol < volTarget:
                 l1 = lmid
             else:
                 l2 = lmid
-        return (lmid, phi)
+        return (lmid, vol)
     
     def initialize_phi(phiFixedTensor, blockRes, f=None, evenOdd=1, scale=.3):
         phi = -torch.ones_like(phiFixedTensor).cuda()
