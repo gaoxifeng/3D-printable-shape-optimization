@@ -30,7 +30,7 @@ class SIMPTopoOpt():
 
         print("SIMP minimum complicance problem with OC")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
-        print(f"Volume fration: {volfrac}, Penalty p: {self.p}, Filter radius: {self.rmin}")
+        print(f"Volume fraction: {volfrac}, Penalty p: {self.p}, Filter radius: {self.rmin}")
         # max and min stiffness
         E_min = torch.tensor(1e-3)
         E_max = torch.tensor(1.0)

@@ -1,4 +1,4 @@
-from TopoOptWorstCase import TopoOptWorstCase
+from SIMPTopoOptWorstCase import SIMPTopoOptWorstCase
 import torch,os
 
 def Dumbell_Example_2D(res=(360,120), volfrac=None):
@@ -22,7 +22,7 @@ def Dumbell_Example_2D(res=(360,120), volfrac=None):
 
 if __name__ == "__main__":
     _, params = Dumbell_Example_2D()
-    sol = TopoOptWorstCase(rmin=2, outputDetail=False)
+    sol = SIMPTopoOptWorstCase(rmin=2, outputDetail=False)
     if not os.path.exists("rho.pt"):
         rho = sol.run(*params)
         torch.save(rho,"rho.pt")

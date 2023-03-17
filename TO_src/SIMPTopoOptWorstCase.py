@@ -1,10 +1,10 @@
-from TopoOpt import *
+from SIMPTopoOpt import *
 from TOCLayer import TOCLayer
 from TOCWorstCase import TOCWorstCase
 
-class TopoOptWorstCase(TopoOpt):
+class SIMPTopoOptWorstCase(SIMPTopoOpt):
     def __init__(self, *, p=3, rmin=5, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
-        TopoOpt.__init__(self, p=p, rmin=rmin, maxloop=maxloop, maxloopLinear=maxloopLinear, tolx=tolx, tolLinear=tolLinear, outputInterval=outputInterval, outputDetail=outputDetail)
+        SIMPTopoOpt.__init__(self, p=p, rmin=rmin, maxloop=maxloop, maxloopLinear=maxloopLinear, tolx=tolx, tolLinear=tolLinear, outputInterval=outputInterval, outputDetail=outputDetail)
 
     def run(self, rho, phiTensor, phiFixedTensor, rhoMask, lam, mu):
         nelx, nely, nelz = shape3D(rho)
@@ -12,12 +12,12 @@ class TopoOptWorstCase(TopoOpt):
         bb = mg.BBox()
         bb.minC = [0,0,0]
         bb.maxC = shape3D(rho)
-        Ker, Ker_S = TopoOpt.filter(self.rmin, rho)
+        Ker, Ker_S = SIMPTopoOpt.filter(self.rmin, rho)
         volfrac = torch.sum(rho).item() / rho.reshape(-1).shape[0]
 
         print("Worst case minimum complicance problem with OC")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
-        print(f"Volume fration: {volfrac}, Penalty p: {self.p}, Filter radius: {self.rmin}")
+        print(f"Volume fraction: {volfrac}, Penalty p: {self.p}, Filter radius: {self.rmin}")
         # max and min stiffness
         E_min = torch.tensor(1e-3)
         E_max = torch.tensor(1.0)
@@ -28,7 +28,7 @@ class TopoOptWorstCase(TopoOpt):
         #compute filtered volume gradient (this is contant so we can precompute)
         rho = rho.detach()
         rho.requires_grad_()
-        rho_filtered = TopoOpt.filter_density(Ker, rho)/Ker_S
+        rho_filtered = SIMPTopoOpt.filter_density(Ker, rho)/Ker_S
         volume = torch.sum(rho_filtered)
         volume.backward()
         gradVolume = rho.grad.detach()
@@ -45,7 +45,7 @@ class TopoOptWorstCase(TopoOpt):
 
             #update worst case
             TOCLayer.free()
-            rho_filtered = (TopoOpt.filter_density(Ker, rho)/Ker_S).detach()
+            rho_filtered = (SIMPTopoOpt.filter_density(Ker, rho)/Ker_S).detach()
             if loop == 1:
                 TOCWorstCase.compute_worst_case(E_min + rho_filtered ** self.p * (E_max - E_min))
             else: TOCWorstCase.update_worst_case(E_min + rho_filtered ** self.p * (E_max - E_min))
@@ -54,13 +54,13 @@ class TopoOptWorstCase(TopoOpt):
             #compute filtered objective gradient
             rho = rho.detach()
             rho.requires_grad_()
-            rho_filtered = TopoOpt.filter_density(Ker, rho)/Ker_S
+            rho_filtered = SIMPTopoOpt.filter_density(Ker, rho)/Ker_S
             obj = TOCLayer.apply(E_min + rho_filtered ** self.p * (E_max - E_min))
             obj.backward()
             gradObj = rho.grad.detach()
             
             rho_old = rho.clone()
-            rho, g = TopoOptWorstCase.oc_grid(rho, gradObj, gradVolume, g, rhoMask)
+            rho, g = SIMPTopoOptWorstCase.oc_grid(rho, gradObj, gradVolume, g, rhoMask)
             change = torch.linalg.norm(rho.reshape(-1,1) - rho_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
             if loop%self.outputInterval == 0:

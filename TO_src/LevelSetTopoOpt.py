@@ -34,7 +34,7 @@ class LevelSetTopoOpt():
         
         print("Level-set minimum complicance problem")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
-        print(f"Volume fration: {self.volfrac}")
+        print(f"Volume fraction: {self.volfrac}")
         # max and min stiffness
         E_min = torch.tensor(1e-3)
         E_max = torch.tensor(1.0)
