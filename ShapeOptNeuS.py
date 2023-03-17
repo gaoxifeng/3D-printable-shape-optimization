@@ -7,23 +7,25 @@ from TOUtils import *
 import libMG as mg
 import time
 import math
-"""
-Input is a mesh, core function is run
-one batch with batchsize images and NeuS run once
-After K iterations, generate a grid to ShapeOpt,
-backpropogate the gradient or what?
-How to combine the two parts with a general loss term?
-"""
 torch.set_default_dtype(torch.float64)
+
+
+
 class ShapeOptNeuS(ShapeOpt):
-    def __init__(self, FieldRender, volfrac, dt=0.1, tau=1e-4, p=4, d=-0.02, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
+    def __init__(self, FieldRender, volfrac, Alternate_Iteration=5, dt=0.1, tau=1e-4, p=4, d=-0.02, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
         ShapeOpt.__init__(self, volfrac=volfrac, dt=dt, tau=tau, p=p, d=d, maxloop=maxloop, maxloopLinear=maxloopLinear, tolx=tolx, tolLinear=tolLinear, outputInterval=outputInterval, outputDetail=outputDetail)
         self.Field_R = FieldRender
+        self.res_step = Alternate_Iteration
         a = 1
 
-    def run(self, phiTensor, phiFixedTensor, f, lam, mu, phi=None, curvatureOnly=False, img_batch_size=4, img_resolution=64, res_step=5):
-        self.Field_R.train(img_batch_size, img_resolution, res_step)
-        self.WorstCaseSO(phiTensor, phiFixedTensor, f, lam, mu, phi, curvatureOnly)
+    def run(self, phiTensor, phiFixedTensor, f, lam, mu, phi=None, curvatureOnly=False, img_batch_size=4, img_resolution=64):
+        bound_min = [0,0,0]
+        bound_max = shape3D(phiFixedTensor)
+        resolution = shape3D(phiFixedTensor)
+        for i in range(5):
+            self.Field_R.train(img_batch_size, img_resolution, self.res_step)
+            phi = ShapeOptNeuS.extract_fields(bound_min, bound_max, resolution, lambda pts: -self.Field_R.sdf_network.sdf(pts))
+            self.WorstCaseSO(phiTensor, phiFixedTensor, f, lam, mu, phi, curvatureOnly)
 
 
     def WorstCaseSO(self, phiTensor, phiFixedTensor, f, lam, mu, phi=None, curvatureOnly=False):
@@ -101,3 +103,20 @@ class ShapeOptNeuS(ShapeOpt):
 
         mg.finalizeGPU()
         return phi
+
+    def extract_fields(bound_min, bound_max, resolution, query_func):
+        N = 64
+        X = torch.linspace(bound_min[0], bound_max[0], resolution[0]).split(N)
+        Y = torch.linspace(bound_min[1], bound_max[1], resolution[1]).split(N)
+        Z = torch.linspace(bound_min[2], bound_max[2], resolution[2]).split(N)
+
+        u = torch.zeros(resolution)
+        with torch.no_grad():
+            for xi, xs in enumerate(X):
+                for yi, ys in enumerate(Y):
+                    for zi, zs in enumerate(Z):
+                        xx, yy, zz = torch.meshgrid(xs, ys, zs)
+                        pts = torch.cat([xx.reshape(-1, 1), yy.reshape(-1, 1), zz.reshape(-1, 1)], dim=-1)
+                        val = query_func(pts).reshape(len(xs), len(ys), len(zs))
+                        u[xi * N: xi * N + len(xs), yi * N: yi * N + len(ys), zi * N: zi * N + len(zs)] = val
+        return u
