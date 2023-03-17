@@ -73,7 +73,7 @@ class LevelSetShapeOpt():
             
             #update level set function / reinitialize
             phi_old = phi.clone()
-            phi = TOLayer.implicitCurvatureFlow((gradObj - lam) + phi / self.dt)
+            phi = TOLayer.implicitCurvatureFlow((gradObj - gradVolume * lam) + phi / self.dt)
             phi = TOLayer.reinitializeNode(phi)
             change = torch.linalg.norm(phi.reshape(-1,1) - phi_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
@@ -95,7 +95,7 @@ class LevelSetShapeOpt():
         vol = 0.
         while (l2 - l1) > 1e-3 and abs(vol - volTarget) > 1e-3:
             lmid = 0.5 * (l2 + l1)
-            phi = phi0 + (gradObj - lmid) * dt
+            phi = phi0 + (gradObj - gradVolume * lmid) * dt
             rho = LevelSetShapeOpt.computeDensity(phi, h)
             vol = torch.sum(rho).item()
             if vol < volTarget:
