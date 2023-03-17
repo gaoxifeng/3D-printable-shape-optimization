@@ -103,3 +103,46 @@ class LevelSetShapeOpt():
             else:
                 l2 = lmid
         return (lmid, phi)
+    
+    def initialize_phi(phiFixedTensor, blockRes, f=None, evenOdd=1, scale=.3):
+        phi = torch.ones_like(phiFixedTensor).cuda()
+        
+        #determine resolution
+        res = list(phi.shape)
+        blockSize = min([(s-1)//blockRes for s in res])
+        blockRes = [s//blockSize for s in res]
+        blockSize = [float(s)/r for s,r in zip(res,blockRes)]
+        if len(res)==2:
+            res+=[1]
+            blockRes+=[0]
+            blockSize+=[2]
+            
+        #drill holes
+        for x in range(blockRes[0]+1):
+            for y in range(blockRes[1]+1):
+                for z in range(blockRes[2]+1):
+                    #only drill hole add even places
+                    if (x+y+z)%2==evenOdd:
+                        continue
+                    #determine the parameter of the hole
+                    ctr = [c*bs for c,bs in zip([x,y,z],blockSize)]
+                    size = [bs*scale for bs in blockSize]
+                    left = [int(max(c-s,0)) for c,s in zip(ctr,size)]
+                    right = [int(min(c+s+1,r)) for c,s,r in zip(ctr,size,res)]
+                    #do not drill hole when there is an external force
+                    hasForce = False
+                    if f is not None:
+                        for xx in range(left[0],right[0]):
+                            for yy in range(left[1],right[1]):
+                                for zz in range(left[2],right[2]):
+                                    hasForce = hasForce or torch.norm(to3DNodeVector(f)[:,xx,yy,zz])!=0.
+                    if hasForce:
+                        continue
+                    #drill a hole
+                    for xx in range(left[0],right[0]):
+                        for yy in range(left[1],right[1]):
+                            for zz in range(left[2],right[2]):
+                                if sum([(p-c)**2/s**2 for p,c,s in zip([xx,yy,zz],ctr,size)])<1.:
+                                    to3DNodeScalar(phi)[xx,yy,zz]=-1.
+                                
+        return phi
