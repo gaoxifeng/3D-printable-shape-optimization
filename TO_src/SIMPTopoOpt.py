@@ -28,7 +28,7 @@ class SIMPTopoOpt():
         Ker, Ker_S = SIMPTopoOpt.filter(self.rmin, rho)
         volfrac = torch.sum(rho).item() / rho.reshape(-1).shape[0]
 
-        print("Minimum complicance problem with OC")
+        print("SIMP minimum complicance problem with OC")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
         print(f"Volume fration: {volfrac}, Penalty p: {self.p}, Filter radius: {self.rmin}")
         # max and min stiffness

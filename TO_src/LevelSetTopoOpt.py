@@ -32,7 +32,7 @@ class LevelSetTopoOpt():
             assert phi.shape == phiFixedTensor.shape
         else: phi = torch.ones(phiFixedTensor.shape).cuda()
         
-        print("Level-set shape optimization problem")
+        print("Level-set minimum complicance problem")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
         print(f"Volume fration: {self.volfrac}")
         # max and min stiffness
