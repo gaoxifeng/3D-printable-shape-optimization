@@ -8,7 +8,7 @@ def shape3D(t):
         return [t.shape[0],t.shape[1],0]
     else: return t.shape
     
-def to3DScalar(t):
+def to3DCellScalar(t):
     if dim(t)==2:
         return t.unsqueeze(2)
     else: return t

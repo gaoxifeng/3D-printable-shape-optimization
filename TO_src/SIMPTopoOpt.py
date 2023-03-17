@@ -69,10 +69,10 @@ class SIMPTopoOpt():
                 if not os.path.exists("results"):
                     os.mkdir("results")
                 print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
-                showRhoVTK("results/rho"+str(loop), to3DScalar(rho).detach().cpu().numpy(), False)
+                showRhoVTK("results/rho"+str(loop), to3DCellScalar(rho).detach().cpu().numpy(), False)
         
         mg.finalizeGPU()
-        return to3DScalar(rho_old).detach().cpu().numpy()
+        return to3DCellScalar(rho_old).detach().cpu().numpy()
     
     def filter(r_min, grid):
         L = int(np.floor(r_min))

@@ -39,10 +39,10 @@ class LevelSetShapeOpt():
         mg.initializeGPU()
         TOLayer.reset(phiTensor, phiFixedTensor, f, bb, lam, mu, self.tolLinear, self.maxloopLinear, self.outputDetail)
         TOLayer.setupCurvatureFlow(self.dt, self.tau * nelx * nely * nelz)
-        phi = TOLayer.reinitializeCell(phi[:-1,:-1])
+        phi = TOLayer.reinitializeNode(phi)
         if not os.path.exists("results"):
             os.mkdir("results")
-        showRhoVTK("results/phiInit", to3DScalar(phi).detach().cpu().numpy(), False)
+        showRhoVTK("results/phiInit", to3DNodeScalar(phi).detach().cpu().numpy(), False)
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
             loop += 1
@@ -79,10 +79,10 @@ class LevelSetShapeOpt():
             end = time.time()
             if loop%self.outputInterval == 0:
                 print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {5:.3f}Gb".format(loop, obj, vol, change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
-                showRhoVTK("results/phi"+str(loop), to3DScalar(phi).detach().cpu().numpy(), False)
+                showRhoVTK("results/phi"+str(loop), to3DNodeScalar(phi).detach().cpu().numpy(), False)
                 
         mg.finalizeGPU()
-        return to3DScalar(phi_old).detach().cpu().numpy()
+        return to3DNodeScalar(phi_old).detach().cpu().numpy()
     
     def computeDensity(phi, h):
         phic = torch.clamp(phi, min=-h, max=h) / h

@@ -14,7 +14,7 @@ class TOLayer(torch.autograd.Function):
     
     @staticmethod
     def reset(phiTensor, phiFixedTensor, f, bb, lam, mu, tol=1e-2, maxloop=1000, output=True):
-        TOLayer.grid = mg.GridGPU(to3DScalar(phiTensor), to3DNodeScalar(phiFixedTensor), bb)
+        TOLayer.grid = mg.GridGPU(to3DCellScalar(phiTensor), to3DNodeScalar(phiFixedTensor), bb)
         TOLayer.grid.coarsen(128)
         TOLayer.dim = dim(phiTensor)
         TOLayer.sol = mg.GridSolverGPU(TOLayer.grid)
@@ -45,7 +45,7 @@ class TOLayer(torch.autograd.Function):
         if TOLayer.grid.isFree():
             TOLayer.b = makeSameDimVector(TOLayer.sol.projectOutBases(to3DNodeVector(TOLayer.b)), TOLayer.dim)
             TOLayer.u = makeSameDimVector(TOLayer.sol.projectOutBases(to3DNodeVector(TOLayer.u)), TOLayer.dim)
-        TOLayer.sol.updateVector(to3DScalar(rho))
+        TOLayer.sol.updateVector(to3DCellScalar(rho))
         TOLayer.sol.setBNodeVector(to3DNodeVector(TOLayer.b),False)
         TOLayer.u = makeSameDimVector(TOLayer.sol.solveMGPCGVector(to3DNodeVector(TOLayer.u), TOLayer.tol, TOLayer.maxloop, True, TOLayer.output), TOLayer.dim)
         if TOLayer.grid.isFree():
@@ -54,11 +54,11 @@ class TOLayer(torch.autograd.Function):
     
     @staticmethod
     def reinitializeCell(rho, eps=1e-3, maxIter=1000, output=False):
-        return makeSameDimScalar(TOLayer.sol.reinitializeCell(to3DScalar(rho), eps, maxIter, output), TOLayer.dim)
+        return makeSameDimScalar(TOLayer.sol.reinitializeCell(to3DCellScalar(rho), eps, maxIter, output), TOLayer.dim)
 
     @staticmethod
     def reinitializeNode(rho, eps=1e-3, maxIter=1000, output=False):
-        return makeSameDimScalar(TOLayer.sol.reinitializeNode(to3DScalar(rho), eps, maxIter, output), TOLayer.dim)
+        return makeSameDimScalar(TOLayer.sol.reinitializeNode(to3DNodeScalar(rho), eps, maxIter, output), TOLayer.dim)
     
     @staticmethod
     def setupCurvatureFlow(dt, tau):

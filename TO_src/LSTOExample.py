@@ -62,7 +62,7 @@ def Bridge_Example(res=(40,90,360), volfrac=0.1):
     return res, volfrac, (phiTensor, phiFixedTensor, f, lam, mu)
 
 if __name__ == "__main__":
-    _, volfrac, params = Bridge_Example()
+    _, volfrac, params = Toy_Example_2D()
     sol = LevelSetTopoOpt(volfrac=volfrac, outputDetail=False)
     if not os.path.exists("phi.pt"):
         phi = sol.run(*params)

@@ -83,3 +83,10 @@ def showFMagnitudeCellVTK(name, f, op=np.linalg.norm):
                     a[i,j,k] = op(f[:,i,j,k])
     gridToVTK(name,x,y,z,cellData={"magnitude":a})
           
+def writeRho(path, phi):
+    f = open(path,"w")
+    f.write("%d %d %d\n"%(phi.shape[0],phi.shape[1],phi.shape[2]))
+    for z in range(phi.shape[2]):
+        for y in range(phi.shape[1]):
+            for x in range(phi.shape[0]):
+                f.write("%.11f\n"%phi[x,y,z])

@@ -79,7 +79,7 @@ def Bridge_Example(res=(40,90,360), volfrac=0.1):
     return res, (rho, phiTensor, phiFixedTensor, f, rhoMask, lam, mu)
 
 if __name__ == "__main__":
-    _, params = Toy_Example()
+    _, params = Toy_Example_2D()
     sol = SIMPTopoOpt(rmin=2, outputDetail=False)
     if not os.path.exists("rho.pt"):
         rho = sol.run(*params)

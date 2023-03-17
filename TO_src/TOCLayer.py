@@ -15,7 +15,7 @@ class TOCLayer(torch.autograd.Function):
 
     @staticmethod
     def reset(phiTensor, phiFixedTensor, f, bb, lam, mu, tol=1e-2, maxloop=1000, output=True):
-        TOCLayer.grid = mg.GridGPU(to3DScalar(phiTensor), to3DNodeScalar(phiFixedTensor), bb)
+        TOCLayer.grid = mg.GridGPU(to3DCellScalar(phiTensor), to3DNodeScalar(phiFixedTensor), bb)
         TOCLayer.grid.coarsen(128)
         TOCLayer.dim = dim(phiTensor)
         TOCLayer.sol = mg.GridSolverGPU(TOCLayer.grid)
@@ -52,7 +52,7 @@ class TOCLayer(torch.autograd.Function):
             TOCLayer.u = makeSameDimVector(TOCLayer.sol.projectOutBases(to3DNodeVector(TOCLayer.u)), TOCLayer.dim)
             if TOCLayer.fixed:
                 TOCLayer.bOut = makeSameDimVector(TOCLayer.sol.projectOutBases(to3DNodeVector(TOCLayer.bOut)), TOCLayer.dim)
-        TOCLayer.sol.updateVector(to3DScalar(rho))
+        TOCLayer.sol.updateVector(to3DCellScalar(rho))
         if TOCLayer.fixed:
             TOCLayer.sol.setBNodeVector(to3DNodeVector(TOCLayer.bOut), False)
         else: 
@@ -66,16 +66,16 @@ class TOCLayer(torch.autograd.Function):
     @staticmethod
     def nodeToCell(rho):  # u->b
         TOCLayer.b = to3DCellVector(TOCLayer.b).detach()
-        TOCLayer.sol.nodeToCellVector(TOCLayer.b, to3DNodeVector(TOCLayer.u), to3DScalar(rho))
+        TOCLayer.sol.nodeToCellVector(TOCLayer.b, to3DNodeVector(TOCLayer.u), to3DCellScalar(rho))
         TOCLayer.b = makeSameDimVector(TOCLayer.b, TOCLayer.dim)
 
     @staticmethod
     def reinitializeCell(rho, eps=1e-3, maxIter=1000, output=False):
-        return makeSameDimScalar(TOCLayer.sol.reinitializeCell(to3DScalar(rho), eps, maxIter, output), TOCLayer.dim)
+        return makeSameDimScalar(TOCLayer.sol.reinitializeCell(to3DCellScalar(rho), eps, maxIter, output), TOCLayer.dim)
 
     @staticmethod
     def reinitializeNode(rho, eps=1e-3, maxIter=1000, output=False):
-        return makeSameDimScalar(TOCLayer.sol.reinitializeNode(to3DScalar(rho), eps, maxIter, output), TOCLayer.dim)
+        return makeSameDimScalar(TOCLayer.sol.reinitializeNode(to3DNodeScalar(rho), eps, maxIter, output), TOCLayer.dim)
     
     @staticmethod
     def setupCurvatureFlow(dt, tau):

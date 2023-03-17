@@ -5,7 +5,6 @@ def Cube_Example_2D(res=(180,180)):
     nelx, nely = res
     phiTensor = -torch.ones((nelx, nely)).cuda()
     phiFixedTensor = torch.ones((nelx + 1, nely + 1)).cuda()
-    phiFixedTensor[0,:] = -1
     f = torch.zeros((2, nelx + 1, nely + 1)).cuda()
     phi = torch.ones_like(phiFixedTensor).cuda()
     for x in range(nelx//4,nelx*3//4):
