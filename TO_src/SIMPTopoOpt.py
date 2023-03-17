@@ -1,13 +1,13 @@
 import torch,time,os
 import numpy as np
 import libMG as mg
+from Viewer import *
 from TOUtils import *
 from TOLayer import TOLayer
 import torch.nn.functional as F
 torch.set_default_dtype(torch.float64)
-from Viewer import *
 
-class TopoOpt():
+class SIMPTopoOpt():
     def __init__(self, *, p=3, rmin=5, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
         # self.device = 'cpu'
         self.p = p
@@ -25,7 +25,7 @@ class TopoOpt():
         bb = mg.BBox()
         bb.minC = [0,0,0]
         bb.maxC = shape3D(rho)
-        Ker, Ker_S = TopoOpt.filter(self.rmin, rho)
+        Ker, Ker_S = SIMPTopoOpt.filter(self.rmin, rho)
         volfrac = torch.sum(rho).item() / rho.reshape(-1).shape[0]
 
         print("Minimum complicance problem with OC")
@@ -41,7 +41,7 @@ class TopoOpt():
         #compute filtered volume gradient (this is contant so we can precompute)
         rho = rho.detach()
         rho.requires_grad_()
-        rho_filtered = TopoOpt.filter_density(Ker, rho)/Ker_S
+        rho_filtered = SIMPTopoOpt.filter_density(Ker, rho)/Ker_S
         volume = torch.sum(rho_filtered)
         volume.backward()
         gradVolume = rho.grad.detach()
@@ -56,20 +56,20 @@ class TopoOpt():
             #compute filtered objective gradient
             rho = rho.detach()
             rho.requires_grad_()
-            rho_filtered = TopoOpt.filter_density(Ker, rho)/Ker_S
+            rho_filtered = SIMPTopoOpt.filter_density(Ker, rho)/Ker_S
             obj = TOLayer.apply(E_min + rho_filtered ** self.p * (E_max - E_min))
             obj.backward()
             gradObj = rho.grad.detach()
             
             rho_old = rho.clone()
-            rho, g = TopoOpt.oc_grid(rho, gradObj, gradVolume, g, rhoMask)
+            rho, g = SIMPTopoOpt.oc_grid(rho, gradObj, gradVolume, g, rhoMask)
             change = torch.linalg.norm(rho.reshape(-1,1) - rho_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
             if loop%self.outputInterval == 0:
                 if not os.path.exists("results"):
                     os.mkdir("results")
                 print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {4:.3f}Gb".format(loop, obj, (g + volfrac * nelx * nely * nelz) / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
-                showRhoVTK("result/rho"+str(loop), to3DScalar(rho).detach().cpu().numpy(), False)
+                showRhoVTK("results/rho"+str(loop), to3DScalar(rho).detach().cpu().numpy(), False)
         
         mg.finalizeGPU()
         return to3DScalar(rho_old).detach().cpu().numpy()

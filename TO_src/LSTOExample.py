@@ -1,5 +1,4 @@
-from TOExample import *
-from ShapeOpt import *
+from LevelSetTopoOpt import *
 from Viewer import *
 
 def Toy_Example_2D(res=(360,120), volfrac=0.4):
@@ -64,7 +63,7 @@ def Bridge_Example(res=(40,90,360), volfrac=0.1):
 
 if __name__ == "__main__":
     _, volfrac, params = Bridge_Example()
-    sol = ShapeOpt(volfrac=volfrac, outputDetail=False)
+    sol = LevelSetTopoOpt(volfrac=volfrac, outputDetail=False)
     if not os.path.exists("phi.pt"):
         phi = sol.run(*params)
         torch.save(phi,"phi.pt")

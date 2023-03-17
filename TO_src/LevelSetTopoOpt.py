@@ -1,12 +1,13 @@
-import torch,time,math
+import torch,time,math,os
 import numpy as np
 import libMG as mg
+from Viewer import *
 from TOUtils import *
 from TOLayer import TOLayer
 import torch.nn.functional as F
 torch.set_default_dtype(torch.float64)
 
-class ShapeOpt():
+class LevelSetTopoOpt():
     def __init__(self, *, volfrac, dt=0.1, tau=1e-4, p=4, d=-0.02, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
         # self.device = 'cpu'
         self.volfrac = volfrac
@@ -51,7 +52,7 @@ class ShapeOpt():
             loop += 1
             
             #compute volume
-            strength = (ShapeOpt.nodeToCell(phi)>0).double().detach()
+            strength = (LevelSetTopoOpt.nodeToCell(phi)>0).double().detach()
             vol = torch.sum(strength).item() / strength.reshape(-1).shape[0]
             if loop == 1:
                 volInit = vol
@@ -68,7 +69,7 @@ class ShapeOpt():
                 #simple replacement of topological derivative
                 obj.backward()
                 dir = (-strength.grad.detach() * (strength * (E_max - E_min) + E_min)).detach()
-            dirNode = ShapeOpt.cellToNode(dir)
+            dirNode = LevelSetTopoOpt.cellToNode(dir)
             
             #set augmented Lagrangian parameter
             ex = self.volfrac + (volInit - self.volfrac) * max(0, 1 - loop / nvol)
@@ -82,8 +83,11 @@ class ShapeOpt():
             change = torch.linalg.norm(phi.reshape(-1,1) - phi_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
             if loop%self.outputInterval == 0:
+                if not os.path.exists("results"):
+                    os.mkdir("results")
                 print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {5:.3f}Gb".format(loop, obj, torch.sum(strength).item() / (nelx * nely * nelz), change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
-        
+                showRhoVTK("results/phi"+str(loop), to3DScalar(phi).detach().cpu().numpy(), False)
+                
         mg.finalizeGPU()
         return to3DScalar(phi_old).detach().cpu().numpy()
     

@@ -1,5 +1,5 @@
-from TopoOpt import TopoOpt
-import torch,os
+from SIMPTopoOpt import *
+from Viewer import *
 
 def Toy_Example_2D(res=(360,120), volfrac=0.4):
     nelx, nely = res
@@ -80,11 +80,10 @@ def Bridge_Example(res=(40,90,360), volfrac=0.1):
 
 if __name__ == "__main__":
     _, params = Toy_Example()
-    sol = TopoOpt(rmin=2, outputDetail=False)
+    sol = SIMPTopoOpt(rmin=2, outputDetail=False)
     if not os.path.exists("rho.pt"):
         rho = sol.run(*params)
         torch.save(rho,"rho.pt")
     else: rho=torch.load("rho.pt")
-    from Viewer import *
     showRhoVTK("rho",rho)
     showRho(rho, 0.99)
