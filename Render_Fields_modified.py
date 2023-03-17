@@ -184,8 +184,6 @@ class Render_Fields(torch.nn.Module):
         return rays_o, rays_v
 
 
-
-
     def forward(self, mvp, campos, resolution):
 
         # image = torch.randn([mvp.shape[0],resolution,resolution,3])
@@ -209,10 +207,11 @@ class Render_Fields(torch.nn.Module):
 
         for g in self.optimizer.param_groups:
             g['lr'] = self.learning_rate * learning_factor
-    def train(self, img_batch_size, resolution):
+
+    def train(self, img_batch_size, resolution, res_step):
         self.writer = SummaryWriter(log_dir=os.path.join(self.base_exp_dir, 'logs'))
         self.update_learning_rate()
-        res_step = self.end_iter - self.iter_step
+        # res_step = self.end_iter - self.iter_step
         # image_perm = self.get_image_perm()
         Batch_size = img_batch_size
         H = resolution
@@ -269,7 +268,7 @@ class Render_Fields(torch.nn.Module):
 
             eikonal_loss = gradient_error
 
-            mask_loss = F.binary_cross_entropy(weight_sum.clip(1e-3, 1.0 - 1e-3), mask)
+            mask_loss = F.binary_cross_entropy(weight_sum.clip(1e-3, 1.0 - 1e-3), mask.double())
 
             loss = color_fine_loss +\
                    eikonal_loss * self.igr_weight +\
@@ -288,8 +287,8 @@ class Render_Fields(torch.nn.Module):
             # self.writer.add_scalar('Statistics/cdf', (cdf_fine[:, :1] * mask).sum() / mask_sum, self.iter_step)
             # self.writer.add_scalar('Statistics/weight_max', (weight_max * mask).sum() / mask_sum, self.iter_step)
             # self.writer.add_scalar('Statistics/psnr', psnr, self.iter_step)
-            if iter_i%2500==0:
-                self.render_image_Neus(H, W, r_mv, proj_mtx, 1, iter_i)
+            # if iter_i%2500==0:
+            #     self.render_image_Neus(H, W, r_mv, proj_mtx, 1, iter_i)
             # print(f'{loss.item()},\n')
 
             if self.iter_step % self.report_freq == 0:
