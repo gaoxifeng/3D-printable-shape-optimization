@@ -140,7 +140,7 @@ class Render_Fields(torch.nn.Module):
 
         # self.SDF = torch.nn.Parameter(SDF)
         # self.CF = torch.nn.Parameter(CF)
-    def save_checkpoint(self):
+    def save_checkpoint(self, i):
         checkpoint = {
             'nerf': self.nerf_outside.state_dict(),
             'sdf_network_fine': self.sdf_network.state_dict(),
@@ -151,7 +151,7 @@ class Render_Fields(torch.nn.Module):
         }
 
         os.makedirs(os.path.join(self.base_exp_dir, 'checkpoints'), exist_ok=True)
-        torch.save(checkpoint, os.path.join(self.base_exp_dir, 'checkpoints', 'ckpt_{:0>6d}.pth'.format(self.iter_step)))
+        torch.save(checkpoint, os.path.join(self.base_exp_dir, 'checkpoints', f'ckpt_{i}_iteration.pth'))
     def gen_rays_training(self,img, mask, mv, p):
         B, H, W, _ = img.shape
         idx_image = torch.randint(low=0, high=B, size=[self.batch_size]).cpu()
@@ -283,12 +283,8 @@ class Render_Fields(torch.nn.Module):
             self.writer.add_scalar('Loss/loss', loss, self.iter_step)
             self.writer.add_scalar('Loss/color_loss', color_fine_loss, self.iter_step)
             self.writer.add_scalar('Loss/eikonal_loss', eikonal_loss, self.iter_step)
-            # self.writer.add_scalar('Statistics/s_val', s_val.mean(), self.iter_step)
-            # self.writer.add_scalar('Statistics/cdf', (cdf_fine[:, :1] * mask).sum() / mask_sum, self.iter_step)
-            # self.writer.add_scalar('Statistics/weight_max', (weight_max * mask).sum() / mask_sum, self.iter_step)
-            # self.writer.add_scalar('Statistics/psnr', psnr, self.iter_step)
+
             # if iter_i%2500==0:
-            #     self.render_image_Neus(H, W, r_mv, proj_mtx, 1, iter_i)
             # print(f'{loss.item()},\n')
 
             if self.iter_step % self.report_freq == 0:
@@ -305,6 +301,7 @@ class Render_Fields(torch.nn.Module):
             #     self.validate_mesh()
 
             self.update_learning_rate()
+        return (H, W, r_mv, proj_mtx, 1)
 
 
     #One-step version of training process
@@ -405,24 +402,6 @@ class Render_Fields(torch.nn.Module):
         rays_o = rays_o.split(self.batch_size)
         rays_d = rays_v.split(self.batch_size)
 
-        # out_rgb_fine = []
-        # for rays_o_batch, rays_d_batch in zip(rays_o, rays_d):
-        #     near, far = near_far_from_sphere(rays_o_batch, rays_d_batch)
-        #     background_rgb = None
-        #
-        #     render_out = self.renderer.render(rays_o_batch,
-        #                                       rays_d_batch,
-        #                                       near,
-        #                                       far,
-        #                                       background_rgb=background_rgb,
-        #                                       cos_anneal_ratio=self.get_cos_anneal_ratio())
-        #
-        #     out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
-        #     del render_out
-        # img_fine = (np.concatenate(out_rgb_fine, axis=0).reshape([H, W, 3]) * 256).clip(0, 255).astype(np.uint8)
-        # loc = self.out_dir+ '/images_Field/'+('train_%06d_%03d.png' % (iter_i, img_N))
-        # util.save_image(loc, img_fine)
-
         out_rgb_fine = []
         out_normal_fine = []
 
@@ -441,26 +420,13 @@ class Render_Fields(torch.nn.Module):
                 return (key in render_out) and (render_out[key] is not None)
 
             if feasible('color_fine'):
-                out_rgb_fine.append(render_out['color_fine'].detach().cpu().numpy())
-            if feasible('gradients') and feasible('weights'):
-                n_samples = self.renderer.n_samples + self.renderer.n_importance
-                normals = render_out['gradients'] * render_out['weights'][:, :n_samples, None]
-                if feasible('inside_sphere'):
-                    normals = normals * render_out['inside_sphere'][..., None]
-                normals = normals.sum(dim=1).detach().cpu().numpy()
-                out_normal_fine.append(normals)
+                out_rgb_fine.append(render_out['color_fine'].float().detach().cpu().numpy())
             del render_out
 
         img_fine = None
         if len(out_rgb_fine) > 0:
             img_fine = (np.concatenate(out_rgb_fine, axis=0).reshape([H, W, 3, -1]) * 256).clip(0, 255)
 
-        # normal_img = None
-        # if len(out_normal_fine) > 0:
-        #     normal_img = np.concatenate(out_normal_fine, axis=0)
-        #     rot = np.linalg.inv(self.dataset.pose_all[idx, :3, :3].detach().cpu().numpy())
-        #     normal_img = (np.matmul(rot[None, :, :], normal_img[:, :, None])
-        #                   .reshape([H, W, 3, -1]) * 128 + 128).clip(0, 255)
 
         os.makedirs(os.path.join(self.base_exp_dir, 'validations_fine'), exist_ok=True)
         # os.makedirs(os.path.join(self.base_exp_dir, 'normals'), exist_ok=True)
@@ -468,16 +434,12 @@ class Render_Fields(torch.nn.Module):
         for i in range(img_fine.shape[-1]):
             if len(out_rgb_fine) > 0:
                 cv.imwrite(loc, cv.cvtColor(img_fine[..., i], cv.COLOR_RGB2BGR)  )
-            # if len(out_normal_fine) > 0:
-            #     cv.imwrite(os.path.join(self.base_exp_dir,
-            #                             'normals',
-            #                             '{:0>8d}_{}_{}.png'.format(self.iter_step, i, idx)),
-            #                normal_img[..., i])
 
 
     """
     For visualization of learned SDF
     """
+
     def load_checkpoint(self, checkpoint_name):
         checkpoint = torch.load(os.path.join(self.base_exp_dir, 'checkpoints', checkpoint_name), map_location=self.device)
         self.nerf_outside.load_state_dict(checkpoint['nerf'])

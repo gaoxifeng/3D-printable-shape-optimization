@@ -12,7 +12,7 @@ torch.set_default_dtype(torch.float64)
 
 
 class ShapeOptNeuS():
-    def __init__(self, FieldRender, grid_resolution, lam=1, mu=1, Alternate_Iteration=50, mode='LSSO'):
+    def __init__(self, FieldRender, grid_resolution, lam=1, mu=1, Alternate_Iteration=2000, mode='LSSO'):
         super().__init__()
         self.Field_R = FieldRender
         self.res_step = Alternate_Iteration
@@ -21,26 +21,31 @@ class ShapeOptNeuS():
         self.lam = lam
         self.mu = mu
         self.phiTensor, self.phiFixedTensor = self.gen_paras()
-        self.OptSolver = LevelSetShapeOptWorstCase(outputDetail=False)
+        self.OptSolver = LevelSetShapeOptWorstCase(outputDetail=False, maxloop=200)
 
 
 
-    def run(self, img_batch_size=4, img_resolution=128):
+    def run(self, img_batch_size=4, img_resolution=256):
         bound_min = -1.01
         bound_max = 1.01
-        self.load_state('ckpt_0_iteration.pth')
-        phi = ShapeOptNeuS.extract_fields(bound_min, bound_max, self.grid_res,
-                                          lambda pts: -self.Field_R.sdf_network.sdf(pts))
-
-        showRhoVTK("phi", phi.detach().cpu().numpy(), False)
-        params = (self.phiTensor, self.phiFixedTensor, self.lam, self.mu, phi)
-        self.OptSolver.run(*params)
-        # for i in range(5):
-        #     self.Field_R.train(img_batch_size, img_resolution, self.res_step)
-        #     phi = ShapeOptNeuS.extract_fields(bound_min, bound_max, self.grid_res, lambda pts: -self.Field_R.sdf_network.sdf(pts))
-        #     params = (self.phiTensor, self.phiFixedTensor, self.lam, self.mu, phi)
-        #     self.save_state(i)
+        # self.load_state(f'ckpt_0_iteration.pth')
+        # phi = ShapeOptNeuS.extract_fields(bound_min, bound_max, self.grid_res,
+        #                                   lambda pts: -self.Field_R.sdf_network.sdf(pts))
+        # params = (self.phiTensor, self.phiFixedTensor, self.lam, self.mu, phi)
+        # for i in range(2):
+        #     # showRhoVTK("phi", phi.detach().cpu().numpy(), False)
+        #     # self.OptSolver = LevelSetShapeOptWorstCase(outputDetail=False, maxloop=50)
         #     self.OptSolver.run(*params)
+
+        for i in range(5):
+            img_para = self.Field_R.train(img_batch_size, img_resolution, self.res_step)
+            phi = ShapeOptNeuS.extract_fields(bound_min, bound_max, self.grid_res, lambda pts: -self.Field_R.sdf_network.sdf(pts))
+            showRhoVTK(f"phi_input_{i}", phi.detach().cpu().numpy(), False)
+            params = (self.phiTensor, self.phiFixedTensor, self.lam, self.mu, phi)
+            self.save_state(i, img_para)
+            phi_wc = self.OptSolver.run(*params)
+            showRhoVTK(f"phi_output_{i}", phi_wc, False)
+        mg.finalizeGPU()
 
     def extract_fields(bound_min, bound_max, resolution, query_func):
         N = 64
@@ -67,8 +72,9 @@ class ShapeOptNeuS():
         phiFixedTensor = torch.ones((nelx + 1, nely + 1, nelz + 1)).cuda()
         return phiTensor, phiFixedTensor
 
-    def save_state(self,i):
+    def save_state(self,i, img_para):
         self.Field_R.save_checkpoint(i)
+        self.Field_R.render_image_Neus(*img_para, i)
         pass
 
     def load_state(self, network_checkpoint_name):
