@@ -1,7 +1,7 @@
 from LevelSetTopoOpt import *
 
 class LevelSetShapeOpt():
-    def __init__(self, *, h=5, dt=2.5, tau=1e-10, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
+    def __init__(self, *, h=5, dt=1.5, tau=1e-10, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
         # self.device = 'cpu'
         self.h = h
         self.dt = dt
@@ -38,17 +38,15 @@ class LevelSetShapeOpt():
         TOLayer.reset(phiTensor, phiFixedTensor, f, bb, lam, mu, self.tolLinear, self.maxloopLinear, self.outputDetail)
         TOLayer.setupCurvatureFlow(self.dt, self.tau * nelx * nely * nelz)
         phi = TOLayer.reinitializeNode(phi)
-        volTarget = torch.sum(LevelSetShapeOpt.computeDensity(phi, self.h)).item()
+        volTarget = torch.sum(LevelSetShapeOpt.compute_density(phi, self.h)).item()
         print(f"Volume target: {volTarget}")
-        if not os.path.exists("results"):
-            os.mkdir("results")
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
             loop += 1
                 
             phi = phi.detach()
             phi.requires_grad_()
-            vol = torch.sum(LevelSetShapeOpt.computeDensity(phi, self.h))
+            vol = torch.sum(LevelSetShapeOpt.compute_density(phi, self.h))
             vol.backward()
             gradVolume = phi.grad.detach()
                 
@@ -59,7 +57,7 @@ class LevelSetShapeOpt():
             else:
                 phi = phi.detach()
                 phi.requires_grad_()
-                obj = TOLayer.apply(LevelSetShapeOpt.computeDensity(phi, self.h) * (E_max - E_min) + E_min)
+                obj = TOLayer.apply(LevelSetShapeOpt.compute_density(phi, self.h) * (E_max - E_min) + E_min)
                 obj.backward()
                 gradObj = -phi.grad.detach()
             
@@ -73,13 +71,15 @@ class LevelSetShapeOpt():
             change = torch.linalg.norm(phi.reshape(-1,1) - phi_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
             if loop%self.outputInterval == 0:
+                if not os.path.exists("results"):
+                    os.mkdir("results")
                 print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {5:.3f}Gb".format(loop, obj, vol, change, end - start, torch.cuda.memory_allocated(None)/1024/1024/1024))
                 showRhoVTK("results/phi"+str(loop), to3DNodeScalar(phi).detach().cpu().numpy(), False)
                 
         mg.finalizeGPU()
         return to3DNodeScalar(phi_old).detach().cpu().numpy()
     
-    def computeDensity(phi, h):
+    def compute_density(phi, h):
         phic = torch.clamp(phi, min=-h, max=h) / h
         Hphic = phic**3 * .25 - phic * .75 + 0.5
         return LevelSetTopoOpt.nodeToCell(Hphic)
@@ -93,7 +93,7 @@ class LevelSetShapeOpt():
             gradObj = gradObj0 + lmid * gradVolume
             gradObj /= torch.max(torch.abs(gradObj))
             #gradObj *= min(1, 1/torch.max(torch.abs(gradObj)))
-            rho = LevelSetShapeOpt.computeDensity(phi0 + gradObj * dt, h)
+            rho = LevelSetShapeOpt.compute_density(phi0 + gradObj * dt, h)
             vol = torch.sum(rho).item()
             if vol < volTarget:
                 l1 = lmid
