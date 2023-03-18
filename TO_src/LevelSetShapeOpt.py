@@ -26,7 +26,7 @@ class LevelSetShapeOpt():
         
         print("Level-set shape optimization problem")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
-        print(f"Volume target: {volTarget}")
+        print(f"Volume target: {volTarget}, Tau={self.tau}")
         # max and min stiffness
         E_min = torch.tensor(1e-3)
         E_max = torch.tensor(1.0)
@@ -44,6 +44,7 @@ class LevelSetShapeOpt():
             start = time.time()
             loop += 1
                 
+            #compute volume
             phi = phi.detach()
             phi.requires_grad_()
             vol = torch.sum(LevelSetShapeOpt.compute_density(phi, self.h))

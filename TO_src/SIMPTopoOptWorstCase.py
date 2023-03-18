@@ -39,6 +39,8 @@ class SIMPTopoOptWorstCase(SIMPTopoOpt):
             f = torch.zeros((2, nelx, nely))
         else: f = torch.zeros((3, nelx, nely, nelz))
         TOCLayer.reset(phiTensor, phiFixedTensor, f, bb, lam, mu, self.tolLinear, self.maxloopLinear, self.outputDetail)
+        TOCLayer.setupCurvatureFlow(self.dt, self.tau * nelx * nely * nelz)
+        phi = TOLayer.reinitializeNode(phi)
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
             loop += 1
