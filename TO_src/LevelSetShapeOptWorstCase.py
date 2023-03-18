@@ -41,12 +41,10 @@ class LevelSetShapeOptWorstCase(LevelSetShapeOpt):
             loop += 1
                 
             #update worst case
-            TOCLayer.free()
             rho = LevelSetShapeOpt.compute_density(phi, self.h)
             if loop == 1:
                 TOCWorstCase.compute_worst_case(rho * (E_max - E_min) + E_min)
             else: TOCWorstCase.update_worst_case(rho * (E_max - E_min) + E_min)
-            TOCLayer.fix()
                 
             #compute volume
             phi = phi.detach()
@@ -67,7 +65,8 @@ class LevelSetShapeOptWorstCase(LevelSetShapeOpt):
             
             #update level set function / reinitialize
             phi_old = phi.clone()
-            phi = TOCLayer.implicitCurvatureFlow(gradObj + phi / self.dt)
+            phi = phi + gradObj * self.dt
+            #phi = TOCLayer.implicitCurvatureFlow(gradObj + phi / self.dt)
             phi = TOCLayer.reinitializeNode(phi)
             change = torch.linalg.norm(phi.reshape(-1,1) - phi_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()

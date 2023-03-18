@@ -22,8 +22,8 @@ if __name__ == "__main__":
     _, params = Dumbell_Example_2D()
     sol = LevelSetShapeOptWorstCase(outputDetail=False)
     if not os.path.exists("phi.pt"):
-        rho = sol.run(*params)
+        phi = sol.run(*params)
         torch.save(rho,"phi.pt")
-    else: rho=torch.load("phi.pt")
+    else: phi=torch.load("phi.pt")
     from Viewer import *
     showRhoVTK("phi", phi, False)
