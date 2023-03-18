@@ -22,9 +22,11 @@ class LevelSetShapeOpt():
         if phi is not None:
             assert phi.shape == phiFixedTensor.shape
         else: phi = torch.ones(phiFixedTensor.shape).cuda()
+        volTarget = torch.sum(phi<0).item()
         
         print("Level-set shape optimization problem")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
+        print(f"Volume target: {volTarget}")
         # max and min stiffness
         E_min = torch.tensor(1e-3)
         E_max = torch.tensor(1.0)
@@ -38,8 +40,6 @@ class LevelSetShapeOpt():
         TOLayer.reset(phiTensor, phiFixedTensor, f, bb, lam, mu, self.tolLinear, self.maxloopLinear, self.outputDetail)
         TOLayer.setupCurvatureFlow(self.dt, self.tau * nelx * nely * nelz)
         phi = TOLayer.reinitializeNode(phi)
-        volTarget = torch.sum(LevelSetShapeOpt.compute_density(phi, self.h)).item()
-        print(f"Volume target: {volTarget}")
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
             loop += 1
@@ -91,15 +91,13 @@ class LevelSetShapeOpt():
         while (l2 - l1) > 1e-3 and abs(vol - volTarget) > 1e-3:
             lmid = 0.5 * (l2 + l1)
             gradObj = gradObj0 + lmid * gradVolume
-            gradObj /= torch.max(torch.abs(gradObj))
-            #gradObj *= min(1, 1/torch.max(torch.abs(gradObj)))
-            rho = LevelSetShapeOpt.compute_density(phi0 + gradObj * dt, h)
-            vol = torch.sum(rho).item()
+            gradObj = (gradObj / torch.max(torch.abs(gradObj))).detach()
+            vol = torch.sum((phi0 + gradObj * dt)<0).item()
             if vol < volTarget:
                 l1 = lmid
             else:
                 l2 = lmid
-        return (gradObj.detach(), vol)
+        return (gradObj, vol)
     
     def initialize_phi(phiFixedTensor, blockRes, f=None, evenOdd=1, scale=.55):
         phi = -torch.ones_like(phiFixedTensor).cuda()
