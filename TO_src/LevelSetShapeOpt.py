@@ -1,7 +1,7 @@
 from LevelSetTopoOpt import *
 
 class LevelSetShapeOpt():
-    def __init__(self, *, h=5, dt=2.5, tau=0, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
+    def __init__(self, *, h=5, dt=2.5, tau=1e-10, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
         # self.device = 'cpu'
         self.h = h
         self.dt = dt
