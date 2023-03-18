@@ -65,8 +65,7 @@ class LevelSetShapeOptWorstCase(LevelSetShapeOpt):
             
             #update level set function / reinitialize
             phi_old = phi.clone()
-            phi = phi + gradObj * self.dt
-            #phi = TOCLayer.implicitCurvatureFlow(gradObj + phi / self.dt)
+            phi = TOCLayer.implicitCurvatureFlow(gradObj + phi / self.dt)
             phi = TOCLayer.reinitializeNode(phi)
             change = torch.linalg.norm(phi.reshape(-1,1) - phi_old.reshape(-1,1), ord=float('inf')).item()
             end = time.time()
