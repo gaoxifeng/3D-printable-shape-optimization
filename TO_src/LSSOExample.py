@@ -29,9 +29,10 @@ def Toy_Example_2D(res=(360,120), volfrac=0.4):
 if __name__ == "__main__":
     _, params = Toy_Example_2D()
     sol = LevelSetShapeOpt(outputDetail=False)
-    if not os.path.exists("phi.pt"):
-        phi = sol.run(*params)
-        torch.save(phi,"phi.pt")
-    else: phi=torch.load("phi.pt")
-    from Viewer import *
-    showRhoVTK("phi", phi, False)
+    sol.run(*params)
+    #if not os.path.exists("phi.pt"):
+    #    phi = sol.run(*params)
+    #    torch.save(phi,"phi.pt")
+    #else: phi=torch.load("phi.pt")
+    #from Viewer import *
+    #showRhoVTK("phi", phi, False)
