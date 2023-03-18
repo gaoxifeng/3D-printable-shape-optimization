@@ -291,8 +291,8 @@ class Render_Fields(torch.nn.Module):
                 print(self.base_exp_dir)
                 print('iter:{:8>d} loss = {} lr={}'.format(self.iter_step, loss, self.optimizer.param_groups[0]['lr']))
 
-            if self.iter_step % self.save_freq == 0:
-                self.save_checkpoint()
+            # if self.iter_step % self.save_freq == 0:
+            #     self.save_checkpoint()
 
             # if self.iter_step % self.val_freq == 0:
             #     self.validate_image()
