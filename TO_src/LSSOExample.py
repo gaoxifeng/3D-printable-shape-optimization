@@ -40,16 +40,15 @@ def Support_Example(res=(128,128,64)):
     f[2, nelx//2-n:nelx//2+1+n, nely//2-n:nely//2+1+n, 0] = -1
     lam = 0.3 / 0.52
     mu = 1 / 2.6
-    phi = LevelSetShapeOpt.initialize_phi(phiFixedTensor, 4, f=f, scale=.55)
+    phi = LevelSetShapeOpt.initialize_phi(phiFixedTensor, 4, f=f, scale=.6)
     return res, (phiTensor, phiFixedTensor, f, lam, mu, phi)
 
 if __name__ == "__main__":
     _, params = Support_Example()
     sol = LevelSetShapeOpt(outputDetail=False)
-    sol.run(*params)
-    #if not os.path.exists("phi.pt"):
-    #    phi = sol.run(*params)
-    #    torch.save(phi,"phi.pt")
-    #else: phi=torch.load("phi.pt")
-    #from Viewer import *
-    #showRhoVTK("phi", phi, False)
+    if not os.path.exists("phi.pt"):
+        phi = sol.run(*params)
+        torch.save(phi,"phi.pt")
+    else: phi=torch.load("phi.pt")
+    from Viewer import *
+    showRhoVTK("phi", phi, False)
