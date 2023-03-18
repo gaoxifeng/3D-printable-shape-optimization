@@ -59,8 +59,7 @@ class LevelSetShapeOpt():
             else:
                 phi = phi.detach()
                 phi.requires_grad_()
-                rho = LevelSetShapeOpt.computeDensity(phi, self.h)
-                obj = TOLayer.apply(rho * (E_max - E_min) + E_min)
+                obj = TOLayer.apply(LevelSetShapeOpt.computeDensity(phi, self.h) * (E_max - E_min) + E_min)
                 obj.backward()
                 gradObj = -phi.grad.detach()
             
