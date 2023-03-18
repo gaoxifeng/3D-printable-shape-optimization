@@ -23,7 +23,7 @@ if __name__ == "__main__":
     sol = LevelSetShapeOptWorstCase(outputDetail=False)
     if not os.path.exists("phi.pt"):
         phi = sol.run(*params)
-        torch.save(rho,"phi.pt")
+        torch.save(phi,"phi.pt")
     else: phi=torch.load("phi.pt")
     from Viewer import *
     showRhoVTK("phi", phi, False)

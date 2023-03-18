@@ -44,7 +44,7 @@ def Support_Example(res=(128,128,64)):
     return res, (phiTensor, phiFixedTensor, f, lam, mu, phi)
 
 if __name__ == "__main__":
-    _, params = Support_Example()
+    _, params = Toy_Example_2D()
     sol = LevelSetShapeOpt(outputDetail=False)
     if not os.path.exists("phi.pt"):
         phi = sol.run(*params)
