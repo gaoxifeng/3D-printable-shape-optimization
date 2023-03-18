@@ -6,6 +6,7 @@ import libMG as mg
 import time
 import math
 import os
+from Viewer import *
 torch.set_default_dtype(torch.float64)
 
 
@@ -25,21 +26,27 @@ class ShapeOptNeuS():
 
 
     def run(self, img_batch_size=4, img_resolution=128):
-        bound_min = [0,0,0]
-        bound_max = self.grid_res
-        # self.load_state('ckpt_0_iteration.pth')
-        for i in range(5):
-            self.Field_R.train(img_batch_size, img_resolution, self.res_step)
-            phi = ShapeOptNeuS.extract_fields(bound_min, bound_max, self.grid_res, lambda pts: -self.Field_R.sdf_network.sdf(pts))
-            params = (self.phiTensor, self.phiFixedTensor, self.lam, self.mu, phi)
-            self.save_state(i)
-            self.OptSolver.run(*params)
+        bound_min = -1.01
+        bound_max = 1.01
+        self.load_state('ckpt_0_iteration.pth')
+        phi = ShapeOptNeuS.extract_fields(bound_min, bound_max, self.grid_res,
+                                          lambda pts: -self.Field_R.sdf_network.sdf(pts))
+
+        showRhoVTK("phi", phi.detach().cpu().numpy(), False)
+        params = (self.phiTensor, self.phiFixedTensor, self.lam, self.mu, phi)
+        self.OptSolver.run(*params)
+        # for i in range(5):
+        #     self.Field_R.train(img_batch_size, img_resolution, self.res_step)
+        #     phi = ShapeOptNeuS.extract_fields(bound_min, bound_max, self.grid_res, lambda pts: -self.Field_R.sdf_network.sdf(pts))
+        #     params = (self.phiTensor, self.phiFixedTensor, self.lam, self.mu, phi)
+        #     self.save_state(i)
+        #     self.OptSolver.run(*params)
 
     def extract_fields(bound_min, bound_max, resolution, query_func):
         N = 64
-        X = torch.linspace(bound_min[0], bound_max[0], resolution[0]+1).split(N)
-        Y = torch.linspace(bound_min[1], bound_max[1], resolution[1]+1).split(N)
-        Z = torch.linspace(bound_min[2], bound_max[2], resolution[2]+1).split(N)
+        X = torch.linspace(bound_min, bound_max, resolution[0]+1).split(N)
+        Y = torch.linspace(bound_min, bound_max, resolution[1]+1).split(N)
+        Z = torch.linspace(bound_min, bound_max, resolution[2]+1).split(N)
 
         # map the bound_min and bound_max to 0,nelxyz
 
