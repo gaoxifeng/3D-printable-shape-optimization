@@ -41,7 +41,7 @@ def Support_Example(res=(128,128,64)):
     lam = 0.3 / 0.52
     mu = 1 / 2.6
     phi = LevelSetShapeOpt.initialize_phi(phiFixedTensor, 4, f=f, scale=.55)
-    return res (phiTensor, phiFixedTensor, f, lam, mu, phi)
+    return res, (phiTensor, phiFixedTensor, f, lam, mu, phi)
 
 if __name__ == "__main__":
     _, params = Support_Example()
