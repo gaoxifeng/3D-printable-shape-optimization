@@ -1,7 +1,7 @@
 from LevelSetTopoOpt import *
 
 class LevelSetShapeOpt():
-    def __init__(self, *, h=.5, dt=.5, tau=1e-4, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
+    def __init__(self, *, h=.5, dt=.5, tau=0, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2, outputInterval=1, outputDetail=False):
         # self.device = 'cpu'
         self.h = h
         self.dt = dt
@@ -44,6 +44,12 @@ class LevelSetShapeOpt():
             start = time.time()
             loop += 1
                 
+            phi = phi.detach()
+            phi.requires_grad_()
+            vol = torch.sum(LevelSetShapeOpt.computeDensity(phi, self.h))
+            vol.backward()
+            gradVolume = phi.grad.detach()
+                
             #FE-analysis, calculate sensitivity
             if curvatureOnly:
                 gradObj = -torch.ones_like(phi)
@@ -57,7 +63,7 @@ class LevelSetShapeOpt():
                 gradObj = -phi.grad.detach()
             
             #compute Lagrangian multiplier
-            gradObj, vol = LevelSetShapeOpt.find_lam(phi, gradObj, volTarget, self.h, self.dt)
+            gradObj, vol = LevelSetShapeOpt.find_lam(phi, gradObj, gradVolume, volTarget, self.h, self.dt)
             
             #update level set function / reinitialize
             phi_old = phi.clone()
@@ -79,13 +85,13 @@ class LevelSetShapeOpt():
         Hphic = phic**3 * .25 - phic * .75 + 0.5
         return LevelSetTopoOpt.nodeToCell(Hphic)
     
-    def find_lam(phi0, gradObj0, volTarget, h, dt):
+    def find_lam(phi0, gradObj0, gradVolume0, volTarget, h, dt):
         l1 = -1e9
         l2 = 1e9
         vol = 0.
         while (l2 - l1) > 1e-3 and abs(vol - volTarget) > 1e-3:
             lmid = 0.5 * (l2 + l1)
-            gradObj = gradObj0 - lmid
+            gradObj = gradObj0 + lmid * gradVolume0
             gradObj *= min(1, 1/torch.max(torch.abs(gradObj)))
             rho = LevelSetShapeOpt.computeDensity(phi0 + gradObj * dt, h)
             vol = torch.sum(rho).item()
