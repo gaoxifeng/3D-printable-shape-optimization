@@ -75,7 +75,7 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
             # FE-analysis, calculate sensitivity, add L^2 loss in shape difference
             phi = phi.detach()
             phi.requires_grad_()
-            SD_loss = torch.nn.MSELoss(reduction='sum')(LevelSetShapeOpt.compute_density(phi, self.h), rho0)
+            SD_loss = torch.nn.L1Loss(reduction='sum')(LevelSetShapeOpt.compute_density(phi, self.h), rho0)
             obj = TOCLayer.apply(LevelSetShapeOpt.compute_density(phi0, self.h) * (E_max - E_min) + E_min) \
                   + SD_loss
             obj.backward()
