@@ -1,7 +1,9 @@
+import torch.nn
+
 from LevelSetShapeOpt import *
 from TOCLayer import TOCLayer
 from TOCWorstCase import TOCWorstCase
-
+from TO_src.Viewer import *
 
 class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
     def __init__(self, *, h=1, dt=1.5, tau=1e-6, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2,
@@ -40,16 +42,25 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
         phi = TOCLayer.reinitializeNode(phi)
         phi0 = TOCLayer.reinitializeNode(phi0)
         rho0 = LevelSetShapeOpt.compute_density(phi0, self.h)
+        showRhoVTK("results/rho_000", to3DNodeScalar(rho0).detach().cpu().numpy(), False)
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
             loop += 1
 
             # update worst case
             rho = LevelSetShapeOpt.compute_density(phi, self.h)
+            # import mcubes
+            # import trimesh
+            # vertices, triangles = mcubes.marching_cubes(rho0.detach().cpu().numpy(), 0.99)
+            # mesh = trimesh.Trimesh(vertices, triangles)
+            # # _ = mesh.export('test.obj')
+            # mesh.show()
             if loop == 1:
                 TOCWorstCase.compute_worst_case(rho * (E_max - E_min) + E_min)
+                # showFMagnitudeVTK("phi_f", TOCLayer.b.detach().cpu().numpy())
             else:
                 TOCWorstCase.update_worst_case(rho * (E_max - E_min) + E_min)
+                # pass
 
 
             # compute volume
@@ -64,13 +75,14 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
             # FE-analysis, calculate sensitivity, add L^2 loss in shape difference
             phi = phi.detach()
             phi.requires_grad_()
-            obj = TOCLayer.apply(LevelSetShapeOpt.compute_density(phi, self.h) * (E_max - E_min) + E_min) \
-                  + torch.nn.MSELoss(reduction='sum')(rho, rho0)
+            SD_loss = torch.nn.MSELoss(reduction='sum')(LevelSetShapeOpt.compute_density(phi, self.h), rho0)
+            obj = TOCLayer.apply(LevelSetShapeOpt.compute_density(phi0, self.h) * (E_max - E_min) + E_min) \
+                  + SD_loss
             obj.backward()
             gradObj = -phi.grad.detach()
 
             # compute Lagrangian multiplier
-            gradObj, vol = LevelSetShapeOpt.find_lam(phi, gradObj, gradVolume, volTarget, self.h, self.dt)
+            # gradObj, vol = LevelSetShapeOpt.find_lam(phi, gradObj, gradVolume, volTarget, self.h, self.dt)
 
             # update level set function / reinitialize
             phi_old = phi.clone()
@@ -81,14 +93,15 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
             if loop % self.outputInterval == 0:
                 if not os.path.exists("results"):
                     os.mkdir("results")
-                print("it.: {0}, obj.: {1:.3f}, vol.: {2:.3f}, ch.: {3:.3f}, time: {4:.3f}, mem: {5:.3f}Gb".format(loop,
+                print("it.: {0}, obj.: {1:.3f}, SD_loss.: {2:.3f}, vol.: {3:.3f}, ch.: {4:.3f}, time: {5:.3f}, mem: {6:.3f}Gb".format(loop,
                                                                                                                    obj,
+                                                                                                                   SD_loss,
                                                                                                                    vol,
                                                                                                                    change,
                                                                                                                    end - start,
                                                                                                                    torch.cuda.memory_allocated(
                                                                                                                        None) / 1024 / 1024 / 1024))
-                showRhoVTK("results/phi" + str(loop), to3DNodeScalar(phi).detach().cpu().numpy(), False)
-
-        # mg.finalizeGPU()
+                showRhoVTK("results/rho" + str(loop), to3DNodeScalar(rho).detach().cpu().numpy(), False)
+        showFMagnitudeVTK("phi_f_final", TOCLayer.b.detach().cpu().numpy())
+        mg.finalizeGPU()
         return to3DNodeScalar(phi_old).detach().cpu().numpy()
