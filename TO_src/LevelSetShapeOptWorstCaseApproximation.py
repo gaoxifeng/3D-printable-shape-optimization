@@ -76,7 +76,7 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
             phi = phi.detach()
             phi.requires_grad_()
             SD_loss = torch.nn.L1Loss(reduction='sum')(LevelSetShapeOpt.compute_density(phi, self.h), rho0)
-            obj = TOCLayer.apply(LevelSetShapeOpt.compute_density(phi, self.h) * (E_max - E_min) + E_min) \
+            obj = TOCLayer.apply(LevelSetShapeOpt.compute_density(phi0, self.h) * (E_max - E_min) + E_min) \
                   + SD_loss
             obj.backward()
             gradObj = -phi.grad.detach()
