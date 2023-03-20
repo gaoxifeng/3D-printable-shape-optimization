@@ -42,6 +42,7 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
         phi = TOCLayer.reinitializeNode(phi)
         phi0 = TOCLayer.reinitializeNode(phi0)
         rho0 = LevelSetShapeOpt.compute_density(phi0, self.h)
+        SD_loss = 1e9
         showRhoVTK("results/rho_000", to3DNodeScalar(rho0).detach().cpu().numpy(), False)
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
@@ -55,13 +56,14 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
             # mesh = trimesh.Trimesh(vertices, triangles)
             # # _ = mesh.export('test.obj')
             # mesh.show()
+            TOCLayer.free()
             if loop == 1:
                 TOCWorstCase.compute_worst_case(rho * (E_max - E_min) + E_min)
                 # showFMagnitudeVTK("phi_f", TOCLayer.b.detach().cpu().numpy())
             else:
                 TOCWorstCase.update_worst_case(rho * (E_max - E_min) + E_min)
                 # pass
-
+            TOCLayer.fix()
 
             # compute volume
             phi = phi.detach()
@@ -75,16 +77,30 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
             # FE-analysis, calculate sensitivity, add L^2 loss in shape difference
             phi = phi.detach()
             phi.requires_grad_()
-            SD_loss = torch.nn.L1Loss(reduction='sum')(LevelSetShapeOpt.compute_density(phi, self.h), rho0)
+            SD_loss = torch.nn.MSELoss(reduction='sum')(LevelSetShapeOpt.compute_density(phi, self.h), rho0)
+            # if vol >1.5*volTarget:
+            a = 1
+            b = 100
+            # else:
+            #     a = 1
+            #     b = 0
+            # print(a, b)
+            # if SD_loss>=200:
+            #     b = 10000
+            # else:
+            #     b = 1
 
-            obj = TOCLayer.apply(LevelSetShapeOpt.compute_density(phi, self.h) * (E_max - E_min) + E_min) \
-                      + 100 * SD_loss
+            obj = a * TOCLayer.apply(LevelSetShapeOpt.compute_density(phi, self.h) * (E_max - E_min) + E_min) \
+                          + b * SD_loss
+            # obj = 100 * SD_loss
             obj.backward()
             gradObj = -phi.grad.detach()
+            showRhoVTK("results/grad" + str(loop), to3DNodeScalar(gradObj).detach().cpu().numpy(), False)
 
             # compute Lagrangian multiplier
+            # if b==0:
             # gradObj, vol = LevelSetShapeOpt.find_lam(phi, gradObj, gradVolume, volTarget, self.h, self.dt)
-            # gradObj = (gradObj / torch.max(torch.abs(gradObj/10)))
+                # gradObj = (gradObj / torch.max(torch.abs(gradObj)))
 
             # update level set function / reinitialize
             phi_old = phi.clone()
