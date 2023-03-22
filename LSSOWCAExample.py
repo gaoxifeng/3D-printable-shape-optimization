@@ -1,6 +1,8 @@
 from TO_src.LevelSetShapeOptWorstCaseApproximation import LevelSetShapeOptWorstCaseApproximation
 import torch,os
 import numpy as np
+import pysdf
+import skimage
 
 def TWOballs_Example_3D(res=(100, 100, 100)):
     nelx, nely, nelz = res
@@ -15,7 +17,7 @@ def TWOballs_Example_3D(res=(100, 100, 100)):
     cube = np.ones_like(dist)
     cube[dist<=width**2] = -1
 
-    center2 = [60, 60, 60]
+    center2 = [60, 60, 40]
     dist = (X - center2[0])**2 + (Y - center2[1])**2 + (Z - center2[2])**2
     cube2 = np.zeros_like(dist)
     cube2[dist<=width**2] = -2
@@ -55,8 +57,8 @@ def Dumbbell_Example_3D(res=(100, 100, 100)):
 
 
     Ball = cube + cube2
-    for i in range(center[0], center2[0]):
-        for j in range(-1, 1):
+    for i in range(center[0] - 1, center2[0] + 1):
+        for j in range(-2, 2):
             for k in range(center[2] - 1, center[2] + 1):
                 # if i+j<=center[0]+center2:
                 Ball[i, i + j, k] = -1
@@ -98,7 +100,7 @@ def Dumbbell_Example_3D_case2(res=(100, 100, 100)):
 
 
     Ball = cube + cube2
-    for i in range(center[0], center2[0]):
+    for i in range(center[0]-2, center2[0]+2):
         for j in range(-2, 2):
             for k in range(center[2] - 2, center[2] + 2):
                 # if i+j<=center[0]+center2:
@@ -119,24 +121,42 @@ def Dumbbell_Example_3D_case2(res=(100, 100, 100)):
     lam = 0.3 / 0.52
     mu = 1 / 2.6
     return res, (phiTensor, phiFixedTensor, lam, mu, phi0, phi0)
+
+# def combine_two_mesh():
+#     mesh = trimesh.load('aaa.obj')
+#
+#     sdf = pysdf.SDF(mesh.vertices, mesh.faces)
+#
+#     vertices, triangles = mcubes.marching_cubes(sdf, 0.0)
+#     mesh = trimesh.Trimesh(vertices, triangles)
+#     # _ = mesh.export('test_init.obj')
+#     mesh.show()
+
+
 if __name__ == "__main__":
 
     from TO_src.Viewer import *
     import mcubes
     import trimesh
+
     # _, params = Dumbbell_Example_3D()
     # vertices, triangles = mcubes.marching_cubes(params[-1].detach().cpu().numpy(), 0.0)
     # mesh = trimesh.Trimesh(vertices, triangles)
     # _ = mesh.export('test_init.obj')
     # mesh.show()
+
+
+
+
+    # _, params = TWOballs_Example_3D()
     _, params = TWOballs_Example_3D()
     sol = LevelSetShapeOptWorstCaseApproximation(dt=0.001, tau=1e-6,outputDetail=False, maxloop=200)
     phi = sol.run(*params)
     torch.save(phi,"phi.pt")
     # phi=torch.load("phi.pt")
-
-    vertices, triangles = mcubes.marching_cubes(phi, 0.01)
-    mesh = trimesh.Trimesh(vertices, triangles)
-    _ = mesh.export('test.obj')
-    mesh.show()
-    # showRhoVTK("phi", phi, False)
+    #
+    # vertices, triangles = mcubes.marching_cubes(phi, 0.01)
+    # mesh = trimesh.Trimesh(vertices, triangles)
+    # _ = mesh.export('test.obj')
+    # mesh.show()
+    showRhoVTK("phi", phi, False)
