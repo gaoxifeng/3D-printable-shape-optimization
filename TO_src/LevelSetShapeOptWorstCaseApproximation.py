@@ -4,6 +4,7 @@ from LevelSetShapeOpt import *
 from TOCLayer import TOCLayer
 from TOCWorstCase import TOCWorstCase
 from TO_src.Viewer import *
+from SIMPTopoOpt import SIMPTopoOpt
 
 class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
     def __init__(self, *, h=1, dt=1.5, tau=1e-6, maxloop=200, maxloopLinear=1000, tolx=1e-3, tolLinear=1e-2,
@@ -19,6 +20,10 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
         bb.maxC = shape3D(phiTensor)
         #Now phi is pregenerated, we will write a function to automatically generate it.
         volTarget = torch.sum(phi0 < 0).item()
+
+
+        # Ker, Ker_S = SIMPTopoOpt.filter(2.5, phi)
+
 
         print("Worst case level-set shape optimization problem")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
@@ -42,7 +47,6 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
         phi = TOCLayer.reinitializeNode(phi)
         phi0 = TOCLayer.reinitializeNode(phi0)
         rho0 = LevelSetShapeOpt.compute_density(phi0, self.h)
-        SD_loss = 1e9
         showRhoVTK("results/rho_000", to3DNodeScalar(rho0).detach().cpu().numpy(), False)
         while change > self.tolx and loop < self.maxloop:
             start = time.time()
@@ -50,20 +54,13 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
 
             # update worst case
             rho = LevelSetShapeOpt.compute_density(phi, self.h)
-            # import mcubes
-            # import trimesh
-            # vertices, triangles = mcubes.marching_cubes(rho0.detach().cpu().numpy(), 0.99)
-            # mesh = trimesh.Trimesh(vertices, triangles)
-            # # _ = mesh.export('test.obj')
-            # mesh.show()
-            TOCLayer.free()
             if loop == 1:
                 TOCWorstCase.compute_worst_case(rho * (E_max - E_min) + E_min)
                 # showFMagnitudeVTK("phi_f", TOCLayer.b.detach().cpu().numpy())
             else:
                 TOCWorstCase.update_worst_case(rho * (E_max - E_min) + E_min)
                 # pass
-            TOCLayer.fix()
+            # TOCLayer.fix()
 
             # compute volume
             phi = phi.detach()
@@ -78,29 +75,22 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
             phi = phi.detach()
             phi.requires_grad_()
             SD_loss = torch.nn.MSELoss(reduction='sum')(LevelSetShapeOpt.compute_density(phi, self.h), rho0)
-            # if vol >1.5*volTarget:
-            a = 1
-            b = 100
-            # else:
-            #     a = 1
-            #     b = 0
-            # print(a, b)
-            # if SD_loss>=200:
-            #     b = 10000
-            # else:
-            #     b = 1
-
-            obj = a * TOCLayer.apply(LevelSetShapeOpt.compute_density(phi, self.h) * (E_max - E_min) + E_min) \
-                          + b * SD_loss
-            # obj = 100 * SD_loss
+            c = 0.05
+            SP_loss = TOCLayer.apply(LevelSetShapeOpt.compute_density(phi, self.h) * (E_max - E_min) + E_min)
+            if SD_loss > c*volTarget:
+                b = 1*SP_loss.item() / (SD_loss.item()+0.01)
+            else:
+                b = 0
+                print('Now there is no shape similarity loss')
+            obj = SP_loss +  b * SD_loss
             obj.backward()
             gradObj = -phi.grad.detach()
-            showRhoVTK("results/grad" + str(loop), to3DNodeScalar(gradObj).detach().cpu().numpy(), False)
-
-            # compute Lagrangian multiplier
-            # if b==0:
-            # gradObj, vol = LevelSetShapeOpt.find_lam(phi, gradObj, gradVolume, volTarget, self.h, self.dt)
-                # gradObj = (gradObj / torch.max(torch.abs(gradObj)))
+            if SD_loss > c*volTarget:
+                pass
+            else:
+                self.dt = 0.1
+                gradObj, vol = LevelSetShapeOpt.find_lam(phi, gradObj, gradVolume, volTarget, self.h, self.dt)
+                print('Now we apply lam')
 
             # update level set function / reinitialize
             phi_old = phi.clone()
