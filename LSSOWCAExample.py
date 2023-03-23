@@ -57,7 +57,7 @@ def Dumbbell_Example_3D(res=(100, 100, 100)):
 
 
     Ball = cube + cube2
-    for i in range(center[0] - 1, center2[0] + 1):
+    for i in range(center[0], center2[0]):
         for j in range(-2, 2):
             for k in range(center[2] - 1, center[2] + 1):
                 # if i+j<=center[0]+center2:
@@ -100,7 +100,7 @@ def Dumbbell_Example_3D_case2(res=(100, 100, 100)):
 
 
     Ball = cube + cube2
-    for i in range(center[0]-2, center2[0]+2):
+    for i in range(center[0], center2[0]):
         for j in range(-2, 2):
             for k in range(center[2] - 2, center[2] + 2):
                 # if i+j<=center[0]+center2:
