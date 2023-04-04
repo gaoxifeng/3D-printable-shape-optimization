@@ -28,7 +28,8 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
         print("Worst case level-set shape optimization problem")
         print(f"Number of degrees:{str(nelx)} x {str(nely)} x {str(nelz)} = {str(nelx * nely * nelz)}")
         print(f"Volume target: {volTarget}, Tau={self.tau}")
-        showRhoVTK("results/mask_000", to3DNodeScalar(mask).detach().cpu().numpy(), False)
+        # mask = LevelSetTopoOpt.nodeToCell(mask0)
+        # showRhoVTK("results/mask_000", to3DNodeScalar(mask).detach().cpu().numpy(), False)
         # max and min stiffness
         E_min = torch.tensor(1e-3)
         E_max = torch.tensor(1.0)
@@ -61,7 +62,7 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
                 torch.save(phi, f"phi{loop}.pt")
                 torch.save(rho, f"rho{loop}.pt")
                 TOCWorstCase.compute_worst_case(rho * (E_max - E_min) + E_min)
-                # showFMagnitudeVTK("phi_f", TOCLayer.b.detach().cpu().numpy())
+                showFMagnitudeVTK(f"phi_f_{loop}", TOCLayer.b.detach().cpu().numpy())
             else:
                 TOCWorstCase.update_worst_case(rho * (E_max - E_min) + E_min)
                 pass
@@ -88,11 +89,11 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
             phi = phi.detach()
             phi.requires_grad_()
 
-            SD_loss = torch.nn.MSELoss(reduction='sum')(LevelSetShapeOpt.compute_density(phi, self.h), rho0)
+            SD_loss = torch.nn.MSELoss(reduction='sum')(phi, phi0)
             c = 0
             SP_loss = TOCLayer.apply(LevelSetShapeOpt.compute_density(phi, self.h) * (E_max - E_min) + E_min)
             if SD_loss > c*volTarget:
-                b = 0.1*SP_loss.item() / (SD_loss.item()+0.01)
+                b = 1*SP_loss.item() / (SD_loss.item()+0.01)
             else:
                 b = 0
                 print('Now there is no shape similarity loss')
@@ -125,6 +126,5 @@ class LevelSetShapeOptWorstCaseApproximation(LevelSetShapeOpt):
                                                                                                                    torch.cuda.memory_allocated(
                                                                                                                        None) / 1024 / 1024 / 1024))
                 showRhoVTK("results/rho" + str(loop), to3DNodeScalar(rho).detach().cpu().numpy(), False)
-        # showFMagnitudeVTK("phi_f_final", TOCLayer.b.detach().cpu().numpy())
         mg.finalizeGPU()
         return to3DNodeScalar(phi_old).detach().cpu().numpy(), rho.detach().cpu().numpy()
