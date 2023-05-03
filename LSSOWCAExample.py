@@ -62,12 +62,7 @@ def Dumbbell_Example_3D(res=(200, 200, 100), r=2, l=1):
             for k in range(center[2] - r, center[2] + r):
                 # if i+j<=center[0]+center2:
                 Ball[i, i + j, k] = -1
-    # import mcubes
-    # import trimesh
-    # vertices, triangles = mcubes.marching_cubes(Ball, -0.99)
-    # mesh = trimesh.Trimesh(vertices, triangles)
-    # # _ = mesh.export('test.obj')
-    # mesh.show()
+
 
     phi0 = torch.from_numpy(Ball).double().cuda()
     center3 = np.array(center)//2+np.array(center2)//2
@@ -81,29 +76,7 @@ def Dumbbell_Example_3D(res=(200, 200, 100), r=2, l=1):
     lam = 0.3 / 0.52
     mu = 1 / 2.6
 
-    center = [60, 60, 50]
-    width = 30
-    X, Y, Z = np.meshgrid(np.arange(0, nelx+1), np.arange(0, nely+1), np.arange(0, nelz+1))
-    dist = (X - center[0]) ** 2 + (Y - center[1]) ** 2 + (Z - center[2]) ** 2
-    cube = np.ones_like(dist)
-    cube[dist <= width ** 2] = -1
-
-    center2 = [140, 140, 50]
-    dist = (X - center2[0]) ** 2 + (Y - center2[1]) ** 2 + (Z - center2[2]) ** 2
-    cube2 = np.zeros_like(dist)
-    cube2[dist <= width ** 2] = -2
-
-    Ball = cube + cube2
-    Ball[Ball==1] = -2
-    Ball[Ball== -1] = 1
-    for i in range(center[0], center2[0]):
-        for j in range(-r-l, r+l):
-            for k in range(center[2] - r-l, center[2] + r+l):
-                # if i+j<=center[0]+center2:
-                Ball[i, i + j, k] = 1
-
-    Mask = torch.from_numpy(Ball).double().cuda()
-    return res, (phiTensor, phiFixedTensor, lam, mu, phi, phi0, Mask)
+    return res, (phiTensor, phiFixedTensor, lam, mu, phi, phi0)
 
 def Dumbbell_Example_3D_case2(res=(55, 55, 55), r=2):
     nelx, nely, nelz = res
@@ -161,18 +134,6 @@ def Dumbbell_Example_3D_case2(res=(55, 55, 55), r=2):
     mu = 10
     return res, (phiTensor, phiFixedTensor, lam, mu, ff, phi0)
 
-def combine_two_mesh():
-    mesh = trimesh.load('data/f16/f16.obj')
-
-    sdf = mts.mesh_to_voxels(mesh, 400, pad=False)
-    torch.save(sdf, "data/f16/f16.pt")
-    vertices, triangles = mcubes.marching_cubes(sdf, 0.0)
-    mesh = trimesh.Trimesh(vertices, triangles)
-    # _ = mesh.export('test_init.obj')
-    mesh.show()
-
-# write a function here to generate a sdf model which has a mapping mask for evaluating the original sdf and
-#     the desired output for an optimization goal for our final target,
 
 
 if __name__ == "__main__":
@@ -181,18 +142,10 @@ if __name__ == "__main__":
     import mcubes
     import trimesh
 
-    # _, params = Dumbbell_Example_3D()
-    # vertices, triangles = mcubes.marching_cubes(params[-1].detach().cpu().numpy(), 0.0)
-    # mesh = trimesh.Trimesh(vertices, triangles)
-    # _ = mesh.export('test_init.obj')
-    # mesh.show()
 
-
-
-
-    _, params = Dumbbell_Example_3D(r=2, l=2)
+    _, params = Dumbbell_Example_3D(r=5, l=0)
     # # _, params = combine_two_mesh()
-    sol = LevelSetShapeOptWorstCaseApproximation(h=1, dt=0.1, tau=1e-7,outputDetail=False, maxloop=600)
+    sol = LevelSetShapeOptWorstCaseApproximation(h=1, dt=0.1, tau=1e-7,outputDetail=False, maxloop=1500)
     phi, rho = sol.run(*params)
     torch.save(phi,"phi.pt")
     torch.save(rho, "rho.pt")
